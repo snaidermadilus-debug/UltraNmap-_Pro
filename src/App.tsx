@@ -20,7 +20,7 @@ export default function App() {
     <div className="bg-gray-950 text-white min-h-screen pb-20">
       {activeTab === 'dashboard' && <Dashboard />}
       {activeTab === 'scanner' && <Scanner setActiveTab={setActiveTab} />}
-      {activeTab === 'executions' && <Executions />}
+      {activeTab === 'executions' && <Executions onSelect={handleSelectJob} />}
       {activeTab === 'history' && <History onSelect={handleSelectJob} />}
       {activeTab === 'logs' && <Logs />}
       {activeTab === 'details' && <ScanDetails id={selectedJob} />}

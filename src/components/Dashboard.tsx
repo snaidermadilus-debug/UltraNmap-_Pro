@@ -19,17 +19,22 @@ export default function Dashboard() {
   if (!stats) return <div className="p-4">Carregando...</div>;
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-bold">Dashboard</h1>
+    <div className="p-4 space-y-6">
+      <h1 className="text-2xl font-bold text-white">Dashboard</h1>
       <div className="grid grid-cols-2 gap-4">
-        {[ { title: 'Totais', val: stats.total }, { title: 'Executando', val: stats.running }, 
-           { title: 'Concluídas', val: stats.completed }, { title: 'Falhas', val: stats.failed }, 
-           { title: 'Canceladas', val: stats.cancelled } ].map(s => (
-          <div key={s.title} className="bg-gray-800 p-4 rounded text-center">
-            <p className="text-sm text-gray-400">{s.title}</p>
-            <p className="text-2xl font-bold">{s.val}</p>
+        {[ { title: 'Totais', val: stats.total, color: 'text-white' }, 
+           { title: 'Executando', val: stats.running, color: 'text-blue-400' }, 
+           { title: 'Concluídas', val: stats.completed, color: 'text-green-400' }, 
+           { title: 'Falhas', val: stats.failed, color: 'text-red-400' } ].map(s => (
+          <div key={s.title} className="bg-gray-800 p-4 rounded-lg border border-gray-700 shadow-lg text-center">
+            <p className="text-xs uppercase text-gray-500 font-semibold">{s.title}</p>
+            <p className={`text-3xl font-bold ${s.color}`}>{s.val}</p>
           </div>
         ))}
+      </div>
+      <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+          <p className="text-sm text-gray-400">Nmap: <span className="text-green-400 font-semibold">Disponível</span></p>
+          <p className="text-sm text-gray-400">Servidor: <span className="text-green-400 font-semibold">Online</span></p>
       </div>
     </div>
   );
