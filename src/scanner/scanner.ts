@@ -30,42 +30,19 @@ export async function runScan(jobId: string, target: string, type: string) {
       nmapCommand = ''; // Mark as not found
     }
 
-    let nmap;
-    if (nmapCommand) {
-      nmap = spawn(nmapCommand, args);
-    } else {
-      // Mock for development (only if nmap not found)
-      const mockXML = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE nmaprun>
-<nmaprun scanner="nmap" args="nmap ${args.join(' ')}" start="${Date.now()}" startstr="${new Date().toString()}" version="7.94" xmloutputversion="1.05">
-<host>
-  <status state="up" reason="localhost-response" reason_ttl="0"/>
-  <address addr="${target}" addrtype="ipv4"/>
-  <ports>
-    <port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="http" version="Apache" method="table" conf="3"/></port>
-    <port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="ssh" version="OpenSSH" method="table" conf="3"/></port>
-    <port protocol="tcp" portid="443"><state state="closed" reason="conn-refused" reason_ttl="0"/><service name="http" method="table" conf="3"/></port>
-  </ports>
-</host>
-</nmaprun>`;
-      setTimeout(async () => {
-          const db = await readDb();
-          const job = db.jobs.find((j: any) => j.id === jobId);
-          if (job) {
-            job.status = 'completed';
-            job.stdout = mockXML;
-            job.stderr = '';
-            job.exit_code = 0;
-            job.end_time = new Date().toISOString();
-            await writeDb(db);
-          }
-      }, 2000);
-      return; // Mocked
+    if (!nmapCommand) {
+        throw new Error('Nmap não está instalado.');
     }
+
+    const fullCommand = `${nmapCommand} ${args.join(' ')}`;
+    console.log(`[SCAN START] Running: ${fullCommand}`);
+
+    const nmap = spawn(nmapCommand, args);
     
     if (job) {
       job.status = 'running';
       job.pid = nmap.pid;
+      job.nmapCommand = fullCommand;
       await writeDb(db);
     }
 
@@ -74,6 +51,10 @@ export async function runScan(jobId: string, target: string, type: string) {
 
     nmap.stdout.on('data', (data) => { stdout += data; });
     nmap.stderr.on('data', (data) => { stderr += data; });
+
+    nmap.on('error', (err) => {
+        stderr += `Spawn error: ${err.message}`;
+    });
 
     nmap.on('close', async (code) => {
       const db = await readDb();

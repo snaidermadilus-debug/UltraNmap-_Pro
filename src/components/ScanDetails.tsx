@@ -10,12 +10,13 @@ export default function ScanDetails({ id }: any) {
 
   if (!job) return <div className="p-4 text-white">Carregando auditoria...</div>;
 
-  const { parsedData, status, target, stdout, stderr } = job;
+  const { parsedData, status, target, stdout, stderr, nmapCommand, exit_code } = job;
   const host = parsedData?.[0];
   const ports = host?.ports || [];
   const open = ports.filter((p: any) => p.state === 'open');
 
   const getDiagnosis = () => {
+    if (status === 'failed') return "A auditoria não conseguiu ser executada corretamente. Verifique o erro abaixo.";
     if (status !== 'completed') return "A auditoria ainda está em processamento.";
     if (!host) return "O alvo não respondeu ao método de descoberta utilizado.";
     
@@ -31,14 +32,24 @@ export default function ScanDetails({ id }: any) {
       
       <div className="bg-gray-800 p-4 rounded-lg border border-gray-700">
         <p className="text-gray-400 text-sm">Alvo: <span className="text-white font-mono">{target}</span></p>
-        <p className="text-gray-400 text-sm">Estado: <span className="font-semibold">{status === 'completed' ? '✓ Concluído' : status.toUpperCase()}</span></p>
+        <p className="text-gray-400 text-sm">Estado: <span className="font-semibold">{status === 'completed' ? '✓ Concluído' : status === 'failed' ? '✕ FALHA' : status.toUpperCase()}</span></p>
         {host && <p className="text-gray-400 text-sm">Host: <span className="text-white">{host.address} (Online)</span></p>}
       </div>
+
+      {status === 'failed' && (
+        <div className="bg-red-950 p-4 rounded-lg border border-red-800 text-red-200">
+            <h4 className="font-bold text-red-100">FALHA NA AUDITORIA</h4>
+            <p className="text-xs mt-1">Comando: {nmapCommand}</p>
+            <p className="text-xs">Exit Code: {exit_code}</p>
+            <pre className="text-xs mt-2 p-2 bg-red-900 rounded overflow-x-auto">{stderr}</pre>
+        </div>
+      )}
 
       <div className="space-y-2">
         <h3 className="font-bold text-lg">Resumo</h3>
         <p className="text-sm text-gray-300 leading-relaxed bg-gray-900 p-3 rounded border border-gray-800">{getDiagnosis()}</p>
       </div>
+
 
       {job.webResults && job.webResults.length > 0 && (
         <div className="space-y-4">
