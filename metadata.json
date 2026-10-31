@@ -1,0 +1,6 @@
+{
+  "name": "Ultra Nmap Pro",
+  "description": "Ferramenta Web de administração, diagnóstico e auditoria de rede utilizando Nmap.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

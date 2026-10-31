@@ -1,0 +1,23 @@
+{
+  "jobs": [
+    {
+      "id": "test-1793483355860",
+      "target": "127.0.0.1",
+      "type": "fast",
+      "status": "queued",
+      "start_time": "2026-10-31T21:49:15.868Z"
+    },
+    {
+      "id": "test-1793483360506",
+      "target": "127.0.0.1",
+      "type": "fast",
+      "status": "completed",
+      "start_time": "2026-10-31T21:49:20.516Z",
+      "pid": 439,
+      "stdout": "total 4\ndrwxr-xr-x  1 root     root     100 Oct 31 21:48 app\nlrwxrwxrwx  1 root     root       7 Oct 20 21:32 bin -> usr/bin\ndrwxr-xr-x  1 root     root       0 Jul  2 19:05 boot\ndrwxr-xr-x  1 root     root     360 Oct 31 21:39 dev\ndrwxr-xr-x  1 root     root      60 Oct 31 21:39 etc\ndrwxr-xr-x  1 root     root       0 Oct 21 11:35 home\nlrwxrwxrwx  1 root     root       7 Oct 20 21:32 lib -> usr/lib\nlrwxrwxrwx  1 root     root       9 Sep 30 02:05 lib32 -> usr/lib32\nlrwxrwxrwx  1 root     root       9 Oct 20 21:32 lib64 -> usr/lib64\nlrwxrwxrwx  1 root     root      10 Sep 30 02:05 libx32 -> usr/libx32\ndrwxr-xr-x  1 root     root       0 Oct 20 21:32 media\ndrwxr-xr-x  1 root     root       0 Oct 20 21:32 mnt\ndrwxr-xr-x  1 root     root       0 Oct 23 03:49 ms-playwright\ndrwxr-xr-x  1 root     root       0 Oct 21 11:36 opt\ndr-xr-xr-x 29 root     root       0 Oct 31 21:39 proc\ndrwx------  1 root     root      80 Oct 31 21:40 root\ndrwxr-xr-x  1 root     root      60 Oct 31 21:39 run\nlrwxrwxrwx  1 root     root       8 Oct 20 21:32 sbin -> usr/sbin\nlrwxrwxrwx  1 root     root      14 Oct 21 22:49 serve -> /usr/bin/serve\ndrwxr-xr-x  1 root     root       0 Oct 20 21:32 srv\nlrwxrwxrwx  1 root     root      13 Oct 21 22:49 start -> /usr/bin/pid1\ndrwxr-xr-x 12 root     root       0 Oct 31 21:39 sys\ndrwxrwxrwt  1 root     root      80 Oct 31 21:47 tmp\ndrwxr-xr-x  1 root     root       0 Oct 20 21:32 usr\ndrwxr-xr-x  1 root     root      60 Oct 31 21:39 var\ndrwxr-xr-x  1 root     root       0 Oct 21 22:49 workspace\ndrwxr-xr-x  1 www-data www-data   0 Oct 21 22:49 www-data-home\n",
+      "stderr": "",
+      "exit_code": 0,
+      "end_time": "2026-10-31T21:49:20.558Z"
+    }
+  ]
+}
