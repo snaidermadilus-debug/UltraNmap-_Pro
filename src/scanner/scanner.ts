@@ -11,9 +11,13 @@ export async function runScan(jobId: string, target: string, type: string) {
     }
 
     let args = [];
-    if (type === 'fast') args = ['-F', target];
+    if (type === 'discovery') args = ['-sn', target];
+    else if (type === 'fast') args = ['-F', target];
     else if (type === 'common') args = ['--top-ports', '100', target];
     else if (type === 'all') args = ['-p-', target];
+    else if (type === 'services') args = ['-sV', target];
+    else if (type === 'os') args = ['-O', target];
+    else if (type === 'udp') args = ['-sU', '-p', '53,123,161,1900,5353', target];
     else throw new Error('Invalid scan type');
 
     args.push('-oX', '-'); 

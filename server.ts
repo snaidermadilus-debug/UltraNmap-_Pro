@@ -2,6 +2,7 @@ import express from 'express';
 import { readDb, writeDb } from './src/db/db.js';
 import { runScan } from './src/scanner/scanner.js';
 import { parseNmapXML } from './src/scanner/parser.js';
+import { probeWeb } from './src/scanner/webProbe.js';
 
 async function startServer() {
   const db = await readDb();
@@ -42,15 +43,26 @@ async function startServer() {
     if (!job) return res.status(404).json({ success: false, error: 'Job not found' });
     
     let parsedData = null;
+    let webResults: any[] = [];
     if (job.status === 'completed' && job.stdout) {
       try {
         parsedData = await parseNmapXML(job.stdout);
+        // Web discovery
+        for (const host of parsedData) {
+            for (const port of host.ports) {
+                if (['http', 'https', 'ssl/http'].includes(port.service.toLowerCase())) {
+                    const protocol = port.service.includes('https') || port.service.includes('ssl') ? 'https' : 'http';
+                    const web = await probeWeb(host.address, port.port, protocol);
+                    if (web.confirmed) webResults.push(web);
+                }
+            }
+        }
       } catch (e) {
-        console.error('Parsing error', e);
+        console.error('Parsing/Probing error', e);
       }
     }
     
-    res.json({ success: true, data: { ...job, parsedData } });
+    res.json({ success: true, data: { ...job, parsedData, webResults } });
   });
 
   app.post('/api/scans/:id/cancel', async (req, res) => {

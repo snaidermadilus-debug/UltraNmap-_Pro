@@ -40,6 +40,23 @@ export default function ScanDetails({ id }: any) {
         <p className="text-sm text-gray-300 leading-relaxed bg-gray-900 p-3 rounded border border-gray-800">{getDiagnosis()}</p>
       </div>
 
+      {job.webResults && job.webResults.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="font-bold text-lg">Servidores Web Encontrados</h3>
+          {job.webResults.map((web: any, i: number) => (
+            <div key={i} className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+              <div className="flex justify-between items-start mb-2">
+                <span className="font-mono font-bold text-lg">{web.url}</span>
+                <span className="px-2 py-1 rounded text-xs font-bold bg-green-900 text-green-300">ONLINE</span>
+              </div>
+              <p className="text-sm text-gray-300">Status: {web.status}</p>
+              <p className="text-sm text-gray-300">Título: {web.title}</p>
+              <a href={web.url} target="_blank" rel="noopener noreferrer" className="block mt-3 text-center bg-blue-600 text-white font-bold p-2 rounded-lg">ABRIR NO NAVEGADOR</a>
+            </div>
+          ))}
+        </div>
+      )}
+
       {status === 'completed' && ports.length > 0 && (
         <div className="space-y-4">
           <h3 className="font-bold text-lg">Portas identificadas</h3>
