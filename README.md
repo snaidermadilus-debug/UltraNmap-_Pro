@@ -169,10 +169,10 @@ npm run build
 A forma recomendada é utilizar:
 
 npx tsx server.ts
-
+...bash
 rm -rf node_modules package-lock.json
 npm install --legacy-peer-deps
-
+...
 ------------------------------------------------------------------------
 
 ## 🔎 Primeiro scan
