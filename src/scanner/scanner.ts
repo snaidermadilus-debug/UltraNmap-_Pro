@@ -14,41 +14,98 @@ export function validateTarget(target: string): boolean {
   return pattern.test(target.trim());
 }
 
-export function buildNmapArgs(type: string, target: string): string[] {
+export function buildNmapArgs(type: string, target: string, speed?: string, customPorts?: string): string[] {
   let args: string[] = [];
   const cleanTarget = target.trim();
+  const timing = speed && ['T2', 'T3', 'T4', 'T5'].includes(speed.toUpperCase()) 
+    ? `-${speed.toUpperCase()}` 
+    : (type === 'stealth' ? '-T2' : '-T4');
 
   switch (type) {
     case 'discovery':
       args = ['-sn', cleanTarget];
       break;
+    case 'aggressive':
+      args = ['-Pn', timing, '-A', cleanTarget];
+      break;
+    case 'vuln':
+      args = ['-Pn', timing, '--script', 'vuln', '-sV', cleanTarget];
+      break;
+    case 'scripts':
+      args = ['-Pn', timing, '-sC', cleanTarget];
+      break;
+    case 'db':
+      args = ['-Pn', timing, '-p', '3306,5432,27017,6379,1433', cleanTarget];
+      break;
+    case 'iot':
+      args = ['-Pn', timing, '-p', '554,8080,1883,37777,5000', cleanTarget];
+      break;
+    case 'smb':
+      args = ['-Pn', timing, '-p', '139,445,3389', cleanTarget];
+      break;
+    case 'ssl':
+      args = ['-Pn', timing, '--script', 'ssl-enum-ciphers', '-p', '443,8443', cleanTarget];
+      break;
+    case 'firewall':
+      args = ['-Pn', timing, '-sA', cleanTarget];
+      break;
+    case 'stealth':
+      args = ['-Pn', timing, '-sS', cleanTarget];
+      break;
     case 'fast':
-      args = ['-Pn', '-F', cleanTarget];
+      args = ['-Pn', timing, '-F', cleanTarget];
       break;
     case 'common':
-      args = ['-Pn', '--top-ports', '100', cleanTarget];
+      args = ['-Pn', timing, '--top-ports', '100', cleanTarget];
       break;
     case 'top1000':
-      args = ['-Pn', '--top-ports', '1000', cleanTarget];
+      args = ['-Pn', timing, '--top-ports', '1000', cleanTarget];
       break;
     case 'all':
-      args = ['-Pn', '-p-', cleanTarget];
+      args = ['-Pn', timing, '-p-', cleanTarget];
       break;
     case 'services':
-      args = ['-Pn', '-sV', cleanTarget];
+      args = ['-Pn', timing, '-sV', cleanTarget];
       break;
     case 'web':
-      args = ['-Pn', '-p', '80,443,8080,8443,8000,8888,3000,5000', '-sV', cleanTarget];
+      args = ['-Pn', timing, '-p', '80,443,8080,8443,8000,8888,3000,5000', '-sV', cleanTarget];
       break;
     case 'os':
-      args = ['-Pn', '-O', cleanTarget];
+      args = ['-Pn', timing, '-O', cleanTarget];
       break;
     case 'udp':
-      args = ['-Pn', '-sU', '-p', '53,123,161,1900,5353', cleanTarget];
+      args = ['-Pn', timing, '-sU', '-p', '53,123,161,1900,5353', cleanTarget];
       break;
     default:
-      args = ['-Pn', '-F', cleanTarget];
+      args = ['-Pn', timing, '-F', cleanTarget];
       break;
+  }
+
+  // Handle custom ports override if provided (and not host discovery)
+  if (customPorts && customPorts.trim() && type !== 'discovery') {
+    const cleanedPorts = customPorts.trim();
+    const pIndex = args.indexOf('-p');
+    if (pIndex !== -1) {
+      args[pIndex + 1] = cleanedPorts;
+    } else {
+      const topPortsIndex = args.indexOf('--top-ports');
+      const fIndex = args.indexOf('-F');
+      const pDashIndex = args.indexOf('-p-');
+      if (topPortsIndex !== -1) {
+        args.splice(topPortsIndex, 2, '-p', cleanedPorts);
+      } else if (fIndex !== -1) {
+        args.splice(fIndex, 1, '-p', cleanedPorts);
+      } else if (pDashIndex !== -1) {
+        args.splice(pDashIndex, 1, '-p', cleanedPorts);
+      } else {
+        const targetIndex = args.indexOf(cleanTarget);
+        if (targetIndex !== -1) {
+          args.splice(targetIndex, 0, '-p', cleanedPorts);
+        } else {
+          args.push('-p', cleanedPorts);
+        }
+      }
+    }
   }
 
   args.push('-oX', '-');
@@ -56,7 +113,6 @@ export function buildNmapArgs(type: string, target: string): string[] {
 }
 
 export async function processQueue() {
-  // Lock to prevent concurrent execution of processQueue from picking the same job
   if (isQueueProcessing) return;
   isQueueProcessing = true;
 
@@ -65,7 +121,6 @@ export async function processQueue() {
     let runningJobs = db.jobs.filter((j: any) => j.status === 'running');
 
     while (runningJobs.length < MAX_CONCURRENT_SCANS) {
-      // Find queued jobs sorted FIFO by queued_at / start_time
       const queuedJobs = db.jobs
         .filter((j: any) => j.status === 'queued')
         .sort((a: any, b: any) => {
@@ -77,25 +132,23 @@ export async function processQueue() {
       if (queuedJobs.length === 0) break;
       const queuedJob = queuedJobs[0];
 
-      // Safety check: skip if process already active
       if (activeProcesses.has(queuedJob.id)) {
         break;
       }
 
-      // Transition state to running & set start_time at launch
       queuedJob.status = 'running';
       queuedJob.start_time = new Date().toISOString();
       await writeDb(db);
 
       runningJobs.push(queuedJob);
-      startJobExecution(queuedJob.id, queuedJob.target, queuedJob.type).catch(console.error);
+      startJobExecution(queuedJob.id, queuedJob.target, queuedJob.type, queuedJob.speed, queuedJob.customPorts).catch(console.error);
     }
   } finally {
     isQueueProcessing = false;
   }
 }
 
-export async function runScan(jobId: string, target: string, type: string) {
+export async function runScan(jobId: string, target: string, type: string, speed?: string, customPorts?: string) {
   if (!validateTarget(target)) {
     const db = await readDb();
     const job = db.jobs.find((j: any) => j.id === jobId);
@@ -111,7 +164,7 @@ export async function runScan(jobId: string, target: string, type: string) {
   await processQueue();
 }
 
-async function startJobExecution(jobId: string, target: string, type: string) {
+async function startJobExecution(jobId: string, target: string, type: string, speed?: string, customPorts?: string) {
   if (activeProcesses.has(jobId)) {
     return;
   }
@@ -120,7 +173,7 @@ async function startJobExecution(jobId: string, target: string, type: string) {
   const job = db.jobs.find((j: any) => j.id === jobId);
   if (!job) return;
 
-  const args = buildNmapArgs(type, target);
+  const args = buildNmapArgs(job.type || type, job.target || target, job.speed || speed, job.customPorts || customPorts);
   let nmapCommand = 'nmap';
 
   try {

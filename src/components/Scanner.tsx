@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Search, Play, RefreshCw, Wifi, Monitor } from 'lucide-react';
+import { 
+  Search, Play, RefreshCw, Wifi, Monitor, Zap, ShieldAlert, Cpu, 
+  Terminal, Globe, Lock, Server, ShieldCheck, Database, Camera, 
+  Flame, Radio, AlertTriangle 
+} from 'lucide-react';
 
 interface ScannerProps {
   setActiveTab: (tab: string) => void;
@@ -7,20 +11,32 @@ interface ScannerProps {
   initialTarget?: string;
 }
 
-const compactProfiles = [
-  { id: 'fast', name: '⚡ RÁPIDO', flag: '100 PORTAS' },
-  { id: 'common', name: '◉ TOP 100', flag: '100 PORTAS' },
-  { id: 'top1000', name: '◉ TOP 1000', flag: '1000 PORTAS' },
-  { id: 'all', name: '🔥 TODAS', flag: '1–65535' },
-  { id: 'services', name: '⚙ SERVIÇOS', flag: 'VERSION' },
-  { id: 'web', name: '🌐 WEB', flag: 'HTTP / HTTPS' },
-  { id: 'os', name: '🖥 SO', flag: 'OS DETECTION' },
-  { id: 'udp', name: '◉ UDP', flag: 'UDP PORTS' },
+const allProfiles = [
+  { id: 'fast', name: '⚡ RÁPIDO', flag: 'FAST SCAN (-F)', icon: Zap },
+  { id: 'common', name: '◉ TOP 100', flag: 'TOP 100 PORTAS', icon: Server },
+  { id: 'top1000', name: '◉ TOP 1000', flag: 'TOP 1000 PORTAS', icon: Server },
+  { id: 'all', name: '🔥 TODAS', flag: '1–65535 PORTAS', icon: Flame },
+  { id: 'services', name: '⚙ SERVIÇOS', flag: 'VERSION DETECT (-sV)', icon: Cpu },
+  { id: 'web', name: '🌐 WEB', flag: 'HTTP/HTTPS PORTS', icon: Globe },
+  { id: 'os', name: '🖥 SO', flag: 'OS DETECTION (-O)', icon: Terminal },
+  { id: 'udp', name: '◉ UDP', flag: 'UDP SCAN (-sU)', icon: Radio },
+  { id: 'discovery', name: '🔍 DESCOBERTA', flag: 'HOST DISCOVERY (-sn)', icon: Search },
+  { id: 'aggressive', name: '💣 AGRESSIVO', flag: 'OS + VERSÃO + SCRIPTS (-A)', icon: ShieldAlert },
+  { id: 'vuln', name: '🛡 VULNERABILIDADES', flag: 'NSE VULN (--script vuln)', icon: ShieldAlert },
+  { id: 'scripts', name: '📜 SCRIPTS', flag: 'DEFAULT NSE (-sC)', icon: Terminal },
+  { id: 'db', name: '🗄 BANCO DE DADOS', flag: 'MYSQL/PG/MONGO/REDIS', icon: Database },
+  { id: 'iot', name: '📹 IOT / CÂMERAS', flag: 'RTSP/MQTT (554,1883...)', icon: Camera },
+  { id: 'smb', name: '🪟 SMB / WINDOWS', flag: 'SMB/RDP/NETBIOS (139,445)', icon: Server },
+  { id: 'ssl', name: '🔒 SSL / TLS', flag: 'CERTIFICADOS (ssl-enum)', icon: Lock },
+  { id: 'firewall', name: '🧱 FIREWALL', flag: 'ACK SCAN (-sA)', icon: ShieldCheck },
+  { id: 'stealth', name: '🕵 STEALTH', flag: 'SYN LENTO (-sS -T2)', icon: Lock },
 ];
 
 export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: ScannerProps) {
   const [target, setTarget] = useState(initialTarget || '');
   const [selectedProfile, setSelectedProfile] = useState('fast');
+  const [speed, setSpeed] = useState('T4');
+  const [customPorts, setCustomPorts] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [netInfo, setNetInfo] = useState<any>(null);
@@ -39,6 +55,97 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
       .catch(() => {});
   }, [initialTarget]);
 
+  // Adjust default speed when stealth profile is clicked
+  const handleSelectProfile = (id: string) => {
+    setSelectedProfile(id);
+    if (id === 'stealth') {
+      setSpeed('T2');
+    }
+  };
+
+  const getPreviewCommand = () => {
+    const t = target.trim() || '192.168.1.1';
+    let cmd = `nmap`;
+    const speedFlag = `-${speed}`;
+    
+    switch (selectedProfile) {
+      case 'discovery':
+        return `nmap -sn ${t} -oX -`;
+      case 'aggressive':
+        cmd += ` -Pn ${speedFlag} -A`;
+        break;
+      case 'vuln':
+        cmd += ` -Pn ${speedFlag} --script vuln -sV`;
+        break;
+      case 'scripts':
+        cmd += ` -Pn ${speedFlag} -sC`;
+        break;
+      case 'db':
+        cmd += ` -Pn ${speedFlag} -p 3306,5432,27017,6379,1433`;
+        break;
+      case 'iot':
+        cmd += ` -Pn ${speedFlag} -p 554,8080,1883,37777,5000`;
+        break;
+      case 'smb':
+        cmd += ` -Pn ${speedFlag} -p 139,445,3389`;
+        break;
+      case 'ssl':
+        cmd += ` -Pn ${speedFlag} --script ssl-enum-ciphers -p 443,8443`;
+        break;
+      case 'firewall':
+        cmd += ` -Pn ${speedFlag} -sA`;
+        break;
+      case 'stealth':
+        cmd += ` -Pn -T2 -sS`;
+        break;
+      case 'fast':
+        cmd += ` -Pn ${speedFlag} -F`;
+        break;
+      case 'common':
+        cmd += ` -Pn ${speedFlag} --top-ports 100`;
+        break;
+      case 'top1000':
+        cmd += ` -Pn ${speedFlag} --top-ports 1000`;
+        break;
+      case 'all':
+        cmd += ` -Pn ${speedFlag} -p-`;
+        break;
+      case 'services':
+        cmd += ` -Pn ${speedFlag} -sV`;
+        break;
+      case 'web':
+        cmd += ` -Pn ${speedFlag} -p 80,443,8080,8443,8000,8888,3000,5000 -sV`;
+        break;
+      case 'os':
+        cmd += ` -Pn ${speedFlag} -O`;
+        break;
+      case 'udp':
+        cmd += ` -Pn ${speedFlag} -sU -p 53,123,161,1900,5353`;
+        break;
+      default:
+        cmd += ` -Pn ${speedFlag} -F`;
+        break;
+    }
+
+    if (customPorts.trim() && selectedProfile !== 'discovery') {
+      const pVal = customPorts.trim();
+      if (cmd.includes(' -p ')) {
+        cmd = cmd.replace(/ -p [^\s]+/, ` -p ${pVal}`);
+      } else if (cmd.includes(' --top-ports ')) {
+        cmd = cmd.replace(/ --top-ports \d+/, ` -p ${pVal}`);
+      } else if (cmd.includes(' -F')) {
+        cmd = cmd.replace(' -F', ` -p ${pVal}`);
+      } else if (cmd.includes(' -p-')) {
+        cmd = cmd.replace(' -p-', ` -p ${pVal}`);
+      } else {
+        cmd += ` -p ${pVal}`;
+      }
+    }
+
+    cmd += ` ${t} -oX -`;
+    return cmd;
+  };
+
   const startScan = async () => {
     if (!target.trim()) {
       setErrorMsg('Informe um endereço IP, CIDR ou Hostname.');
@@ -51,7 +158,12 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
       const res = await fetch('/api/scans', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ target: target.trim(), type: selectedProfile }),
+        body: JSON.stringify({ 
+          target: target.trim(), 
+          type: selectedProfile,
+          speed,
+          customPorts: customPorts.trim() || undefined
+        }),
       });
       const data = await res.json();
       if (data.success && data.data?.id) {
@@ -83,10 +195,10 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
         )}
       </div>
 
-      {/* Target Area */}
+      {/* Target Input Area */}
       <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-2">
         <div className="flex justify-between items-center text-[10px] font-bold text-zinc-400">
-          <span>TARGET</span>
+          <span>ALVO (TARGET)</span>
           {netInfo?.ip && netInfo.ip !== 'não detectado' && (
             <span className="text-zinc-500">IP: {netInfo.ip}</span>
           )}
@@ -100,7 +212,7 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
           className="w-full bg-zinc-900 p-3 rounded-lg border border-zinc-700 text-emerald-400 font-mono text-xs focus:border-emerald-500 focus:outline-none"
         />
 
-        {/* Quick Target Buttons */}
+        {/* Quick Action Target Fill Buttons */}
         <div className="grid grid-cols-2 gap-1.5 text-[10px] font-bold pt-1">
           <button
             onClick={() => setActiveTab('network')}
@@ -125,28 +237,98 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
         )}
       </div>
 
-      {/* Profiles Grid */}
-      <div className="space-y-2">
-        <span className="text-[10px] font-bold text-zinc-500 block uppercase">PROFILE</span>
-        <div className="grid grid-cols-2 gap-2">
-          {compactProfiles.map((p) => {
-            const isSelected = selectedProfile === p.id;
+      {/* Custom Ports Input (Optional) */}
+      <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-1.5">
+        <div className="text-[10px] font-bold text-zinc-400 flex justify-between">
+          <span>PORTAS CUSTOMIZADAS (OPCIONAL)</span>
+          {customPorts && <span className="text-emerald-400">ATIVADO</span>}
+        </div>
+        <input
+          type="text"
+          value={customPorts}
+          onChange={(e) => setCustomPorts(e.target.value)}
+          placeholder="Ex: 80,443,8080 ou 1-1000"
+          className="w-full bg-zinc-900 p-2.5 rounded-lg border border-zinc-700 text-cyan-300 font-mono text-xs focus:border-cyan-500 focus:outline-none"
+        />
+      </div>
+
+      {/* Speed Timing Selector */}
+      <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-2">
+        <span className="text-[10px] font-bold text-zinc-400 block uppercase">VELOCIDADE (TIMING -T)</span>
+        <div className="grid grid-cols-4 gap-1.5 text-[10px] font-bold">
+          {[
+            { id: 'T2', name: 'T2 (STEALTH)' },
+            { id: 'T3', name: 'T3 (NORMAL)' },
+            { id: 'T4', name: 'T4 (RÁPIDO)' },
+            { id: 'T5', name: 'T5 (INSANO)' },
+          ].map((s) => {
+            const isSelected = speed === s.id;
             return (
               <button
-                key={p.id}
-                onClick={() => setSelectedProfile(p.id)}
-                className={`p-3 rounded-xl border text-left transition-all ${
+                key={s.id}
+                onClick={() => setSpeed(s.id)}
+                className={`py-2 px-1 rounded-lg border text-center transition-all ${
                   isSelected
-                    ? 'bg-emerald-400 text-black border-emerald-400 font-bold shadow-md shadow-emerald-500/20'
-                    : 'bg-zinc-950 border-zinc-800/80 hover:border-zinc-700 text-zinc-300'
+                    ? 'bg-emerald-400 text-black border-emerald-400 font-black shadow-sm'
+                    : 'bg-zinc-900 text-zinc-400 border-zinc-800 hover:text-white'
                 }`}
               >
-                <div className="text-xs font-black">{p.name}</div>
-                <div className={`text-[9px] ${isSelected ? 'text-zinc-900 font-bold' : 'text-zinc-500'}`}>{p.flag}</div>
+                {s.name}
               </button>
             );
           })}
         </div>
+      </div>
+
+      {/* Scrollable Profiles Grid (2 Columns) */}
+      <div className="space-y-1.5">
+        <div className="flex justify-between items-center text-[10px] font-bold text-zinc-400">
+          <span>PERFIL DE AUDITORIA ({allProfiles.length})</span>
+          <span className="text-zinc-500">DESLIZE PARA VER MAIS ↓</span>
+        </div>
+
+        <div className="max-h-64 overflow-y-auto grid grid-cols-2 gap-2 pr-1 scrollbar-thin">
+          {allProfiles.map((p) => {
+            const isSelected = selectedProfile === p.id;
+            const Icon = p.icon;
+
+            return (
+              <button
+                key={p.id}
+                onClick={() => handleSelectProfile(p.id)}
+                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                  isSelected
+                    ? 'bg-emerald-400 text-black border-emerald-400 font-bold shadow-md shadow-emerald-500/20'
+                    : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300'
+                }`}
+              >
+                <div className="flex items-center gap-1.5 text-xs font-black truncate mb-1">
+                  <Icon size={14} className={isSelected ? 'text-black' : 'text-emerald-400'} />
+                  <span className="truncate">{p.name}</span>
+                </div>
+                <div className={`text-[9px] truncate ${isSelected ? 'text-zinc-950 font-bold' : 'text-zinc-500'}`}>
+                  {p.flag}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Real-time Final Command Preview Card */}
+      <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-1">
+        <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block">
+          COMANDO NMAP EXECUTADO:
+        </span>
+        <div className="p-2 bg-black rounded-lg border border-zinc-800 text-emerald-400 font-mono text-[11px] overflow-x-auto whitespace-nowrap">
+          {getPreviewCommand()}
+        </div>
+      </div>
+
+      {/* Legal Authorization Warning Banner */}
+      <div className="bg-amber-950/40 border border-amber-800/60 p-2.5 rounded-xl flex items-center gap-2 text-[10px] text-amber-200 font-sans">
+        <AlertTriangle size={16} className="text-amber-400 shrink-0" />
+        <span>Use apenas em redes e dispositivos que você tem autorização para testar.</span>
       </div>
 
       {/* Main Action Button */}

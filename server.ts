@@ -247,7 +247,7 @@ export async function startServer() {
   });
 
   app.post('/api/scans', async (req, res) => {
-    const { target, type } = req.body;
+    const { target, type, speed, customPorts } = req.body;
     if (!target || !type) {
       return res.status(400).json({ success: false, error: 'Alvo e tipo de scan são obrigatórios.' });
     }
@@ -258,6 +258,8 @@ export async function startServer() {
       id,
       target: target.trim(),
       type,
+      speed: speed || (type === 'stealth' ? 'T2' : 'T4'),
+      customPorts: customPorts ? customPorts.trim() : null,
       status: 'queued',
       queued_at: new Date().toISOString(),
       start_time: null,
@@ -265,7 +267,7 @@ export async function startServer() {
     });
     await writeDb(db);
     
-    runScan(id, target.trim(), type).catch(console.error);
+    runScan(id, target.trim(), type, speed, customPorts).catch(console.error);
     
     res.json({ success: true, data: { id } });
   });
