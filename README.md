@@ -168,27 +168,10 @@ npm run build
 
 A forma recomendada é utilizar:
 
-``` bash
-./ultra.sh
-```
+npx tsx server.ts
 
-Depois abra no navegador:
-
-``` text
-http://127.0.0.1:8080
-```
-
-Se o script não tiver permissão de execução:
-
-``` bash
-chmod +x ultra.sh
-```
-
-e execute novamente:
-
-``` bash
-./ultra.sh
-```
+rm -rf node_modules package-lock.json
+npm install --legacy-peer-deps
 
 ------------------------------------------------------------------------
 
