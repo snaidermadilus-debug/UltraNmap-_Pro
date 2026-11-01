@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Zap, List, Flame, Cpu, Globe, Server, Radio, Play, RefreshCw, Wifi, Monitor } from 'lucide-react';
+import { Search, Play, RefreshCw, Wifi, Monitor } from 'lucide-react';
 
 interface ScannerProps {
   setActiveTab: (tab: string) => void;
@@ -8,14 +8,14 @@ interface ScannerProps {
 }
 
 const compactProfiles = [
-  { id: 'fast', name: '⚡ RÁPIDO', flag: '-F · -Pn' },
+  { id: 'fast', name: '⚡ RÁPIDO', flag: '100 PORTAS' },
   { id: 'common', name: '◉ TOP 100', flag: '100 PORTAS' },
   { id: 'top1000', name: '◉ TOP 1000', flag: '1000 PORTAS' },
   { id: 'all', name: '🔥 TODAS', flag: '1–65535' },
-  { id: 'services', name: '⚙ SERVIÇOS', flag: '-sV' },
+  { id: 'services', name: '⚙ SERVIÇOS', flag: 'VERSION' },
   { id: 'web', name: '🌐 WEB', flag: 'HTTP / HTTPS' },
-  { id: 'os', name: '🖥 SO', flag: '-O' },
-  { id: 'udp', name: '◉ UDP', flag: 'DNS · NTP' },
+  { id: 'os', name: '🖥 SO', flag: 'OS DETECTION' },
+  { id: 'udp', name: '◉ UDP', flag: 'UDP PORTS' },
 ];
 
 export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: ScannerProps) {
@@ -66,6 +66,8 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
     }
   };
 
+  const hasDetectedCidr = netInfo?.cidr && netInfo.cidr !== 'não detectado' && netInfo.cidr !== '127.0.0.1/32';
+
   return (
     <div className="p-4 space-y-4 text-zinc-100 pb-28 max-w-2xl mx-auto font-mono">
       {/* Header */}
@@ -74,7 +76,7 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
           <Search size={16} /> SCANNER
         </h2>
 
-        {netInfo?.cidr && netInfo.cidr !== 'não detectado' && (
+        {hasDetectedCidr && (
           <span className="text-[10px] text-cyan-400 bg-cyan-950/60 border border-cyan-800 px-2 py-0.5 rounded-lg font-bold">
             NET {netInfo.cidr}
           </span>
@@ -98,11 +100,11 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
           className="w-full bg-zinc-900 p-3 rounded-lg border border-zinc-700 text-emerald-400 font-mono text-xs focus:border-emerald-500 focus:outline-none"
         />
 
-        {/* Quick Fill Buttons */}
-        <div className="grid grid-cols-3 gap-1.5 text-[10px] font-bold pt-1">
+        {/* Quick Target Buttons */}
+        <div className="grid grid-cols-2 gap-1.5 text-[10px] font-bold pt-1">
           <button
             onClick={() => setActiveTab('network')}
-            className="p-1.5 bg-zinc-900 hover:bg-zinc-800 text-cyan-400 border border-cyan-800 rounded-lg flex items-center justify-center gap-1"
+            className="p-2 bg-zinc-900 hover:bg-zinc-800 text-cyan-400 border border-cyan-800 rounded-lg flex items-center justify-center gap-1 uppercase"
           >
             <Wifi size={12} /> MINHA REDE
           </button>
@@ -110,16 +112,9 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
           <button
             onClick={() => netInfo?.ip && netInfo.ip !== 'não detectado' && setTarget(netInfo.ip)}
             disabled={!netInfo?.ip || netInfo.ip === 'não detectado'}
-            className="p-1.5 bg-zinc-900 hover:bg-zinc-800 text-emerald-400 border border-emerald-800 rounded-lg flex items-center justify-center gap-1 disabled:opacity-40"
+            className="p-2 bg-zinc-900 hover:bg-zinc-800 text-emerald-400 border border-emerald-800 rounded-lg flex items-center justify-center gap-1 disabled:opacity-40 uppercase"
           >
             <Monitor size={12} /> MEU IP
-          </button>
-
-          <button
-            onClick={() => setTarget('127.0.0.1')}
-            className="p-1.5 bg-zinc-900 hover:bg-zinc-800 text-amber-400 border border-amber-800 rounded-lg flex items-center justify-center gap-1"
-          >
-            <Server size={12} /> LOCALHOST
           </button>
         </div>
 
@@ -147,7 +142,7 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
                 }`}
               >
                 <div className="text-xs font-black">{p.name}</div>
-                <div className={`text-[9px] ${isSelected ? 'text-zinc-900' : 'text-zinc-500'}`}>{p.flag}</div>
+                <div className={`text-[9px] ${isSelected ? 'text-zinc-900 font-bold' : 'text-zinc-500'}`}>{p.flag}</div>
               </button>
             );
           })}
@@ -158,16 +153,16 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
       <button
         onClick={startScan}
         disabled={loading}
-        className="w-full bg-emerald-400 hover:bg-emerald-300 text-black p-3.5 rounded-xl font-black text-sm flex items-center justify-center gap-2 shadow-xl shadow-emerald-950/50 active:scale-95 transition-all tracking-wider uppercase"
+        className="w-full bg-emerald-400 hover:bg-emerald-300 text-black p-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-xl shadow-emerald-950/50 active:scale-95 transition-all tracking-wider uppercase"
       >
         {loading ? (
           <div className="flex items-center gap-2">
-            <RefreshCw size={18} className="animate-spin" />
-            ◉ SCANNER ATIVO
+            <RefreshCw size={16} className="animate-spin" />
+            ◉ SCANNING
           </div>
         ) : (
           <>
-            <Play size={18} fill="currentColor" /> ▶ INICIAR SCAN
+            <Play size={16} fill="currentColor" /> ▶ INICIAR SCAN
           </>
         )}
       </button>
