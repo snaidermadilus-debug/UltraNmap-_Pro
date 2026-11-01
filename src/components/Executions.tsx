@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, Play, CheckCircle2, XCircle, Clock, AlertCircle, RefreshCw, StopCircle, Zap } from 'lucide-react';
+import { Activity, Play, CheckCircle2, XCircle, Clock, RefreshCw, StopCircle, Zap, Terminal } from 'lucide-react';
 
 interface ExecutionsProps {
   onSelect: (id: string) => void;
@@ -23,7 +23,7 @@ function Timer({ startTime, status }: { startTime: string | null, status: string
   const mins = Math.floor(elapsed / 60);
   const secs = elapsed % 60;
   return (
-    <span className="font-mono text-blue-400 font-bold">
+    <span className="font-mono text-emerald-400 font-bold">
       {mins.toString().padStart(2, '0')}:{secs.toString().padStart(2, '0')}
     </span>
   );
@@ -42,13 +42,13 @@ function formatDuration(startTime: string | null, endTime: string | null): strin
 function getDisplayTime(job: any): string {
   if (job.status === 'queued') {
     if (job.queued_at) {
-      return `Na fila (${new Date(job.queued_at).toLocaleTimeString()})`;
+      return `EM FILA (${new Date(job.queued_at).toLocaleTimeString()})`;
     }
-    return 'Na fila...';
+    return 'EM FILA...';
   }
   
   const referenceTime = job.start_time || job.queued_at;
-  if (!referenceTime) return 'Horário N/A';
+  if (!referenceTime) return 'N/A';
   
   return new Date(referenceTime).toLocaleTimeString();
 }
@@ -88,29 +88,29 @@ export default function Executions({ onSelect }: ExecutionsProps) {
   };
 
   return (
-    <div className="p-4 space-y-6 text-white pb-28 max-w-4xl mx-auto">
-      <div className="flex justify-between items-center">
+    <div className="p-4 space-y-5 text-zinc-100 pb-28 max-w-4xl mx-auto font-sans">
+      <div className="flex justify-between items-center border-b border-zinc-800/80 pb-3">
         <div>
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Activity className="text-blue-500" /> Execuções & Jobs
+          <h2 className="text-xl font-mono font-black tracking-widest text-emerald-400 uppercase flex items-center gap-2">
+            <Activity size={18} /> JOBS // EXECUTIONS
           </h2>
-          <p className="text-xs text-gray-400 mt-1 font-medium tracking-tight">
-            Acompanhe o progresso em tempo real das auditorias ativas.
+          <p className="text-[11px] font-mono text-zinc-500 mt-0.5">
+            [ ACTIVE AND PAST NETWORK AUDIT PROCESSES ]
           </p>
         </div>
 
-        <button onClick={fetchJobs} className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-gray-400 hover:text-white transition-colors">
-          <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+        <button onClick={fetchJobs} className="p-2.5 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white transition-colors">
+          <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
       {jobs.length === 0 ? (
-        <div className="bg-gray-900 p-12 rounded-3xl border border-gray-800 text-center text-gray-500 space-y-3">
-          <Zap size={32} className="mx-auto text-gray-800" />
-          <p className="text-sm font-medium">Nenhuma auditoria registrada ainda.</p>
+        <div className="bg-zinc-950/80 p-12 rounded-2xl border border-zinc-800 text-center text-zinc-500 font-mono space-y-2">
+          <Terminal size={32} className="mx-auto text-zinc-800" />
+          <p className="text-xs">[ NENHUM JOB REGISTRADO EM MEMÓRIA ]</p>
         </div>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-3 font-mono">
           {jobs.map((job: any) => {
             const isRunning = job.status === 'running';
             const isCompleted = job.status === 'completed';
@@ -119,72 +119,85 @@ export default function Executions({ onSelect }: ExecutionsProps) {
             const isCancelled = job.status === 'cancelled';
             const durationStr = formatDuration(job.start_time, job.end_time);
 
+            const host = Array.isArray(job.parsedData) && job.parsedData.length > 0 ? job.parsedData[0] : null;
+            const openPortsCount = host?.ports?.filter((p: any) => p.state === 'open').length || 0;
+
             return (
               <div
                 key={job.id}
                 onClick={() => onSelect(job.id)}
-                className={`p-5 rounded-3xl border transition-all cursor-pointer space-y-4 group ${
+                className={`p-4 rounded-2xl border transition-all cursor-pointer space-y-3 group ${
                   isRunning 
-                    ? 'bg-blue-950/20 border-blue-500/30 shadow-lg shadow-blue-900/10' 
-                    : 'bg-gray-900 border-gray-800 hover:border-gray-700'
+                    ? 'bg-emerald-950/20 border-emerald-500/40 shadow-lg shadow-emerald-950/30' 
+                    : 'bg-zinc-950/80 border-zinc-800 hover:border-zinc-700'
                 }`}
               >
                 <div className="flex justify-between items-start">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-mono font-bold text-lg text-white tracking-tight">{job.target}</span>
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-gray-300 uppercase border border-gray-700">
+                      <span className="font-bold text-base text-zinc-100 tracking-tight">{job.target}</span>
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded bg-zinc-900 text-emerald-400 uppercase border border-zinc-800">
                         {job.type}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] text-gray-500 font-bold uppercase tracking-wider flex-wrap">
+                    <div className="flex items-center gap-2 text-[10px] text-zinc-500 font-bold uppercase tracking-wider flex-wrap">
                       <Clock size={10} />
                       {getDisplayTime(job)}
 
                       {isRunning && (
                          <>
-                           <span className="text-gray-700">•</span>
+                           <span className="text-zinc-700">•</span>
                            <Timer startTime={job.start_time} status={job.status} />
+                           <span className="text-zinc-700">•</span>
+                           <span className="text-emerald-400 animate-pulse">NMAP PROCESS ACTIVE</span>
                          </>
                       )}
 
-                      {(isCompleted || isFailed || isCancelled) && durationStr && (
+                      {(isCompleted || isFailed || isCancelled) && (
                          <>
-                           <span className="text-gray-700">•</span>
-                           <span className="font-mono text-gray-400 font-bold">
-                             Duração: {durationStr}
-                           </span>
+                           {durationStr && (
+                              <>
+                                <span className="text-zinc-700">•</span>
+                                <span className="text-zinc-400">DURAÇÃO: {durationStr}</span>
+                              </>
+                           )}
+                           {isCompleted && (
+                             <>
+                               <span className="text-zinc-700">•</span>
+                               <span className="text-emerald-400">{openPortsCount} PORTAS ABERTAS</span>
+                             </>
+                           )}
                          </>
                       )}
                     </div>
                   </div>
 
                   <span
-                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest flex items-center gap-1.5 border transition-all ${
+                    className={`px-2.5 py-1 rounded-xl text-[9px] font-bold tracking-widest flex items-center gap-1.5 border transition-all ${
                       isCompleted
-                        ? 'bg-emerald-950 text-emerald-300 border-emerald-800/50'
+                        ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
                         : isRunning
-                        ? 'bg-blue-500 text-white border-blue-400 shadow-md animate-pulse'
+                        ? 'bg-emerald-500 text-black border-emerald-400 shadow-md animate-pulse'
                         : isQueued
-                        ? 'bg-amber-950 text-amber-300 border-amber-800/50'
-                        : 'bg-red-950 text-red-300 border-red-800/50'
+                        ? 'bg-amber-950/80 text-amber-300 border-amber-800'
+                        : 'bg-rose-950/80 text-rose-300 border-rose-800'
                     }`}
                   >
-                    {isRunning ? 'EXECUTANDO' : isQueued ? 'NA FILA' : job.status.toUpperCase()}
+                    {isRunning ? '● RUNNING' : isQueued ? '● QUEUED' : isCompleted ? '● COMPLETED' : isFailed ? '● FAILED' : '● CANCELLED'}
                   </span>
                 </div>
 
-                <div className="flex justify-between items-center pt-3 border-t border-gray-800/50">
-                  <span className="text-[11px] text-blue-400 font-bold group-hover:text-blue-300 transition-colors uppercase tracking-widest flex items-center gap-1">
-                    Ver Diagnóstico <Zap size={10} fill="currentColor" />
+                <div className="flex justify-between items-center pt-2.5 border-t border-zinc-800/80">
+                  <span className="text-[10px] text-emerald-400 font-bold group-hover:text-emerald-300 transition-colors tracking-widest flex items-center gap-1 uppercase">
+                    [ DIAGNÓSTICO ] <Zap size={10} fill="currentColor" />
                   </span>
 
                   {isRunning && (
                     <button
                       onClick={(e) => handleCancel(job.id, e)}
-                      className="bg-red-950/90 hover:bg-red-900 text-red-300 border border-red-800/50 px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest flex items-center gap-1.5 transition-colors uppercase"
+                      className="bg-rose-950/90 hover:bg-rose-900 text-rose-300 border border-rose-800 px-3 py-1 rounded-xl text-[9px] font-bold tracking-widest flex items-center gap-1 transition-colors uppercase"
                     >
-                      <StopCircle size={12} /> Cancelar
+                      <StopCircle size={11} /> CANCELAR
                     </button>
                   )}
                 </div>

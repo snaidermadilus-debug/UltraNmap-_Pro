@@ -11,7 +11,7 @@ import ScanDetails from './components/ScanDetails';
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedJob, setSelectedJob] = useState<string | null>(null);
-  const [prefilledTarget, setPrefilledTarget] = useState<string>('192.168.1.8');
+  const [prefilledTarget, setPrefilledTarget] = useState<string>('');
 
   const handleSelectJob = (id: string) => {
     setSelectedJob(id);
@@ -24,7 +24,7 @@ export default function App() {
   };
 
   return (
-    <div className="bg-gray-950 text-white min-h-screen">
+    <div className="bg-zinc-950 text-zinc-100 min-h-screen font-sans selection:bg-emerald-500 selection:text-black">
       <main>
         {activeTab === 'dashboard' && (
           <Dashboard setActiveTab={setActiveTab} onSelectJob={handleSelectJob} />

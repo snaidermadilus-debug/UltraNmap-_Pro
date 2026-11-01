@@ -48,22 +48,20 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
 
   if (loading && !job) {
     return (
-      <div className="p-8 text-center text-gray-400 space-y-4">
-        <div className="w-16 h-16 bg-gray-900 border border-gray-800 rounded-full flex items-center justify-center mx-auto">
-          <Clock className="animate-spin text-blue-500" size={24} />
-        </div>
-        <p className="text-sm font-semibold tracking-tight">Carregando auditoria...</p>
+      <div className="p-8 text-center text-emerald-400 font-mono text-xs tracking-wider space-y-4">
+        <div className="w-12 h-12 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
+        <p>[ CARREGANDO RELATÓRIO DA AUDITORIA... ]</p>
       </div>
     );
   }
 
   if (!job) {
     return (
-      <div className="p-6 text-center text-red-400 space-y-3">
-        <XCircle className="mx-auto" size={48} />
-        <p className="font-bold">Auditoria não encontrada.</p>
+      <div className="p-8 text-center text-rose-400 font-mono space-y-3">
+        <XCircle className="mx-auto" size={40} />
+        <p className="font-bold">[ AUDITORIA NÃO ENCONTRADA ]</p>
         {onBack && (
-           <button onClick={onBack} className="text-blue-400 text-sm font-bold underline">VOLTAR</button>
+           <button onClick={onBack} className="text-emerald-400 text-xs font-bold underline">[ VOLTAR ]</button>
         )}
       </div>
     );
@@ -73,14 +71,14 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
 
   if (viewMode === 'progress') {
     return (
-      <div className="pb-28">
+      <div className="pb-28 font-mono">
          <div className="p-4 flex items-center gap-3">
            {onBack && (
-             <button onClick={onBack} className="p-2 bg-gray-900 border border-gray-800 rounded-xl text-gray-400">
-               <ChevronLeft size={20} />
+             <button onClick={onBack} className="p-2 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 hover:text-emerald-400">
+               <ChevronLeft size={18} />
              </button>
            )}
-           <h2 className="text-xl font-bold">Andamento</h2>
+           <h2 className="text-lg font-bold text-emerald-400 uppercase tracking-widest">[ ANDAMENTO DA AUDITORIA ]</h2>
          </div>
          <ScanProgress 
             job={job} 
@@ -158,91 +156,91 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
   };
 
   return (
-    <div className="p-4 space-y-6 text-white pb-28 max-w-4xl mx-auto">
+    <div className="p-4 space-y-5 text-zinc-100 pb-28 max-w-4xl mx-auto font-sans">
       {/* Header */}
-      <div className="flex justify-between items-start border-b border-gray-800 pb-4">
+      <div className="flex justify-between items-start border-b border-zinc-800 pb-4 font-mono">
         <div className="flex items-center gap-3">
-           <button onClick={() => setViewMode('progress')} className="p-2 bg-gray-900 border border-gray-800 rounded-xl text-gray-400">
-             <ChevronLeft size={20} />
+           <button onClick={() => setViewMode('progress')} className="p-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-400 hover:text-emerald-400">
+             <ChevronLeft size={18} />
            </button>
            <div>
-             <span className="text-xs font-mono text-blue-400 block uppercase">Diagnóstico Técnico</span>
-             <h2 className="text-2xl font-bold font-mono text-white">{target}</h2>
+             <span className="text-[10px] text-emerald-400 block uppercase font-bold tracking-widest">[ DIAGNÓSTICO TÉCNICO ]</span>
+             <h2 className="text-xl font-bold text-white tracking-tight">{target}</h2>
            </div>
         </div>
 
         <span
-          className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 border ${
+          className={`px-3 py-1 rounded-xl text-[9px] font-bold flex items-center gap-1.5 border ${
             status === 'completed'
-              ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800'
+              ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
               : status === 'running'
-              ? 'bg-blue-950/80 text-blue-300 border-blue-800 animate-pulse'
+              ? 'bg-blue-950 text-blue-300 border-blue-800 animate-pulse'
               : status === 'queued'
-              ? 'bg-amber-950/80 text-amber-300 border-amber-800'
-              : 'bg-red-950/80 text-red-300 border-red-800'
+              ? 'bg-amber-950 text-amber-300 border-amber-800'
+              : 'bg-rose-950 text-rose-300 border-rose-800'
           }`}
         >
-          {status === 'completed' && <CheckCircle2 size={14} />}
-          {status === 'failed' && <XCircle size={14} />}
+          {status === 'completed' && <CheckCircle2 size={12} />}
+          {status === 'failed' && <XCircle size={12} />}
           {status.toUpperCase()}
         </span>
       </div>
 
       {/* Top Indicators Row */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-gray-900 p-3.5 rounded-xl border border-gray-800 text-center">
-          <span className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Status Host</span>
-          <span className={`text-sm font-bold ${isHostUp ? 'text-emerald-400' : 'text-rose-400'}`}>
-            {isHostUp ? '🟢 ONLINE' : '🔴 OFFLINE'}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 font-mono">
+        <div className="bg-zinc-950 p-3 rounded-2xl border border-zinc-800 text-center">
+          <span className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">STATUS HOST</span>
+          <span className={`text-xs font-bold ${isHostUp ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {isHostUp ? '[ 🟢 HOST ONLINE ]' : '[ 🔴 HOST OFFLINE ]'}
           </span>
         </div>
 
-        <div className="bg-gray-900 p-3.5 rounded-xl border border-gray-800 text-center">
-          <span className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Portas Abertas</span>
-          <span className="text-xl font-bold text-emerald-400 font-mono">{openPorts.length}</span>
+        <div className="bg-zinc-950 p-3 rounded-2xl border border-zinc-800 text-center">
+          <span className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">PORTAS ABERTAS</span>
+          <span className="text-lg font-bold text-emerald-400 font-mono">{openPorts.length}</span>
         </div>
 
-        <div className="bg-gray-900 p-3.5 rounded-xl border border-gray-800 text-center">
-          <span className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Serviços</span>
-          <span className="text-xl font-bold text-blue-400 font-mono">
+        <div className="bg-zinc-950 p-3 rounded-2xl border border-zinc-800 text-center">
+          <span className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">SERVIÇOS</span>
+          <span className="text-lg font-bold text-cyan-400 font-mono">
             {new Set(openPorts.map((p: any) => p.service)).size}
           </span>
         </div>
 
-        <div className="bg-gray-900 p-3.5 rounded-xl border border-gray-800 text-center">
-          <span className="text-[10px] font-bold text-gray-500 uppercase block mb-1">Servidores Web</span>
-          <span className="text-xl font-bold text-purple-400 font-mono">{confirmedWebServers.length}</span>
+        <div className="bg-zinc-950 p-3 rounded-2xl border border-zinc-800 text-center">
+          <span className="text-[9px] font-bold text-zinc-500 uppercase block mb-1">SERVIDORES WEB</span>
+          <span className="text-lg font-bold text-purple-400 font-mono">{confirmedWebServers.length}</span>
         </div>
       </div>
 
       {/* Human Diagnosis Card */}
-      <div className="bg-gray-900 p-5 rounded-xl border border-gray-800 space-y-2">
-        <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
-          <Shield size={14} className="text-blue-400" /> Diagnóstico Humano
+      <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 space-y-2">
+        <h3 className="text-[10px] font-mono font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
+          <Shield size={14} /> [ DIAGNÓSTICO DE AUDITORIA ]
         </h3>
-        <p className="text-sm text-gray-200 leading-relaxed bg-gray-950 p-4 rounded-lg border border-gray-800 font-sans">
+        <p className="text-xs text-zinc-200 leading-relaxed bg-zinc-900/60 p-3.5 rounded-xl border border-zinc-800 font-sans">
           {getHumanDiagnosis()}
         </p>
 
         {host?.mac && (
-          <p className="text-xs text-gray-400 font-mono pt-1">
-            Endereço MAC: <span className="text-white">{host.mac}</span> {host.vendor ? <span className="text-blue-300">({host.vendor})</span> : ''}
+          <p className="text-[10px] text-zinc-500 font-mono pt-1">
+            Endereço MAC: <span className="text-zinc-200">{host.mac}</span> {host.vendor ? <span className="text-cyan-400">({host.vendor})</span> : ''}
           </p>
         )}
       </div>
 
       {/* Failure Alert Box */}
       {status === 'failed' && (
-        <div className="bg-red-950/80 p-5 rounded-xl border border-red-800 text-red-200 space-y-3">
-          <h4 className="font-bold text-sm text-red-100 flex items-center gap-2">
-            <AlertCircle size={18} /> FALHA NA EXECUÇÃO DA AUDITORIA
+        <div className="bg-rose-950/40 p-4 rounded-2xl border border-rose-800/80 text-rose-200 space-y-2 font-mono">
+          <h4 className="font-bold text-xs text-rose-100 flex items-center gap-2 uppercase tracking-wider">
+            <AlertCircle size={16} /> [ FALHA NA EXECUÇÃO DA AUDITORIA ]
           </h4>
-          <div className="text-xs font-mono bg-black/60 p-3 rounded border border-red-900/60 space-y-1">
-            <p><span className="text-red-400">Comando:</span> {nmapCommand || 'N/A'}</p>
-            <p><span className="text-red-400">Exit Code:</span> {exit_code ?? 'Desconhecido'}</p>
+          <div className="text-[11px] bg-black p-3 rounded-xl border border-rose-900/60 space-y-1">
+            <p><span className="text-rose-400">Comando:</span> {nmapCommand || 'N/A'}</p>
+            <p><span className="text-rose-400">Exit Code:</span> {exit_code ?? 'Desconhecido'}</p>
           </div>
           {stderr && (
-            <pre className="text-xs p-3 bg-red-900/40 rounded border border-red-800 overflow-x-auto text-red-200 font-mono">
+            <pre className="text-[10px] p-3 bg-rose-950/60 rounded-xl border border-rose-900 overflow-x-auto text-rose-200">
               {stderr}
             </pre>
           )}
@@ -251,35 +249,35 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
 
       {/* Confirmed Web Servers Section */}
       {confirmedWebServers.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5">
-            <Globe size={16} /> Servidores Web Confirmados ({confirmedWebServers.length})
+        <div className="space-y-2.5 font-mono">
+          <h3 className="text-xs font-bold text-purple-300 uppercase tracking-widest flex items-center gap-1.5">
+            <Globe size={14} /> [ SERVIDORES WEB CONFIRMADOS ({confirmedWebServers.length}) ]
           </h3>
-          <div className="grid gap-3">
+          <div className="grid gap-2.5">
             {confirmedWebServers.map((web: any, idx: number) => (
-              <div key={idx} className="bg-gray-900 p-4 rounded-xl border border-purple-900/40 space-y-3">
+              <div key={idx} className="bg-zinc-950 p-4 rounded-2xl border border-purple-900/40 space-y-3">
                 <div className="flex justify-between items-start">
                   <div>
-                    <span className="font-mono font-bold text-base text-purple-200">{web.url}</span>
-                    <p className="text-xs text-gray-400 mt-0.5">Título: <span className="text-white font-medium">{web.title}</span></p>
+                    <span className="font-bold text-sm text-purple-200">{web.url}</span>
+                    <p className="text-[11px] text-zinc-400 mt-0.5">Título: <span className="text-white font-medium">{web.title}</span></p>
                   </div>
-                  <span className="px-2.5 py-1 rounded text-xs font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">
                     HTTP {web.status}
                   </span>
                 </div>
 
-                <div className="text-xs text-gray-400 space-y-0.5 bg-gray-950 p-2.5 rounded border border-gray-800">
-                  <p>Servidor HTTP: <span className="text-gray-200 font-mono">{web.server}</span></p>
-                  <p>Content-Type: <span className="text-gray-200 font-mono">{web.contentType}</span></p>
+                <div className="text-[10px] text-zinc-400 space-y-0.5 bg-zinc-900 p-2.5 rounded-xl border border-zinc-800">
+                  <p>Servidor HTTP: <span className="text-zinc-200">{web.server}</span></p>
+                  <p>Content-Type: <span className="text-zinc-200">{web.contentType}</span></p>
                 </div>
 
                 <a
                   href={web.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs p-3 rounded-lg flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-purple-950/40"
+                  className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs p-2.5 rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-purple-950/40"
                 >
-                  <ExternalLink size={14} /> ABRIR NO NAVEGADOR
+                  <ExternalLink size={14} /> [ ABRIR NO NAVEGADOR ]
                 </a>
               </div>
             ))}
@@ -289,12 +287,12 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
 
       {/* Identified Ports Section */}
       {status === 'completed' && ports.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-bold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
-            <Server size={16} className="text-blue-400" /> Portas Analisadas ({ports.length})
+        <div className="space-y-2.5 font-mono">
+          <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5">
+            <Server size={14} className="text-emerald-400" /> [ PORTAS ANALISADAS ({ports.length}) ]
           </h3>
 
-          <div className="grid gap-3">
+          <div className="grid gap-2.5">
             {ports.map((p: any, idx: number) => {
               const isOpen = p.state === 'open';
               const isFiltered = p.state === 'filtered';
@@ -305,43 +303,43 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
               return (
                 <div
                   key={idx}
-                  className={`p-4 rounded-xl border transition-all ${
+                  className={`p-3.5 rounded-2xl border transition-all ${
                     isOpen
-                      ? 'bg-gray-900 border-emerald-900/60'
+                      ? 'bg-zinc-950 border-emerald-900/60'
                       : isFiltered
-                      ? 'bg-gray-900 border-amber-900/40'
-                      : 'bg-gray-900/60 border-gray-800 opacity-80'
+                      ? 'bg-zinc-950 border-amber-900/40'
+                      : 'bg-zinc-950/60 border-zinc-850 opacity-80'
                   }`}
                 >
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-2">
-                      <span className={`w-2.5 h-2.5 rounded-full ${isOpen ? 'bg-emerald-500' : isFiltered ? 'bg-amber-500' : 'bg-gray-500'}`}></span>
-                      <span className="font-mono font-bold text-lg text-white">
+                      <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : isFiltered ? 'bg-amber-500' : 'bg-zinc-600'}`}></span>
+                      <span className="font-bold text-sm text-white">
                         {p.port} / {p.protocol.toUpperCase()}
                       </span>
                     </div>
 
                     <span
-                      className={`px-2.5 py-1 rounded text-xs font-bold font-mono ${
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
                         isOpen
                           ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
                           : isFiltered
                           ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                          : 'bg-gray-800 text-gray-400 border border-gray-700'
+                          : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
                       }`}
                     >
                       {p.state.toUpperCase()}
                     </span>
                   </div>
 
-                  <div className="text-xs text-gray-300 space-y-1">
+                  <div className="text-xs text-zinc-300 space-y-0.5">
                     <p>
-                      Serviço: <span className="font-bold text-white uppercase">{p.service}</span>
-                      {p.product && <span className="text-blue-300 font-normal"> ({p.product} {p.version || ''})</span>}
+                      Serviço: <span className="font-bold text-emerald-400 uppercase">{p.service}</span>
+                      {p.product && <span className="text-cyan-300 font-normal"> ({p.product} {p.version || ''})</span>}
                     </p>
                   </div>
 
-                  <p className="text-xs text-gray-400 mt-2 bg-gray-950 p-2.5 rounded border border-gray-800 leading-relaxed font-sans">
+                  <p className="text-xs text-zinc-400 mt-2 bg-zinc-900/80 p-2.5 rounded-xl border border-zinc-800 leading-relaxed font-sans">
                     {getPortExplanation(p)}
                   </p>
 
@@ -350,9 +348,9 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
                       href={webUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="mt-3 w-full bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs p-2.5 rounded-lg flex items-center justify-center gap-1.5 transition-colors"
+                      className="mt-2.5 w-full bg-emerald-500 hover:bg-emerald-400 text-black font-mono font-bold text-xs p-2 rounded-xl flex items-center justify-center gap-1.5 transition-colors uppercase"
                     >
-                      <ExternalLink size={14} /> ABRIR NO NAVEGADOR ({webUrl})
+                      <ExternalLink size={12} /> ABRIR NO NAVEGADOR ({webUrl})
                     </a>
                   )}
                 </div>
@@ -363,39 +361,39 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
       )}
 
       {/* Collapsible Technical Details */}
-      <div className="pt-2">
+      <div className="pt-2 font-mono">
         <button
           onClick={() => setShowTech(!showTech)}
-          className="w-full py-3 px-4 bg-gray-900 hover:bg-gray-850 text-blue-400 hover:text-blue-300 text-xs font-bold rounded-xl border border-gray-800 flex items-center justify-center gap-2 transition-colors"
+          className="w-full py-3 px-4 bg-zinc-950 hover:bg-zinc-900 text-emerald-400 text-xs font-bold rounded-2xl border border-zinc-800 flex items-center justify-center gap-2 transition-colors uppercase tracking-wider"
         >
-          <Terminal size={16} /> {showTech ? 'Esconder detalhes técnicos' : 'Mostrar detalhes técnicos (Saída Raw/XML)'}
+          <Terminal size={14} /> {showTech ? '[ ESCONDER DADOS RAW/XML ]' : '[ MOSTRAR DADOS RAW/XML ]'}
         </button>
 
         {showTech && (
-          <div className="mt-4 bg-gray-950 p-4 rounded-xl border border-gray-800 space-y-3">
+          <div className="mt-3 bg-black p-4 rounded-2xl border border-zinc-800 space-y-3">
             <div className="space-y-1">
-              <span className="text-[10px] font-bold text-gray-500 uppercase">Comando Executado:</span>
-              <p className="font-mono text-xs text-blue-300 bg-black p-2.5 rounded border border-gray-800 overflow-x-auto">
+              <span className="text-[9px] font-bold text-zinc-500 uppercase">Comando Executado:</span>
+              <p className="text-xs text-emerald-400 bg-zinc-950 p-2.5 rounded-xl border border-zinc-800 overflow-x-auto">
                 {nmapCommand || 'nmap -oX -'}
               </p>
             </div>
 
             <div className="space-y-1">
-              <span className="text-[10px] font-bold text-gray-500 uppercase">Exit Code:</span>
-              <p className="font-mono text-xs text-gray-300">{exit_code ?? 'Indeterminado'}</p>
+              <span className="text-[9px] font-bold text-zinc-500 uppercase">Exit Code:</span>
+              <p className="text-xs text-zinc-300">{exit_code ?? 'Indeterminado'}</p>
             </div>
 
             <div className="space-y-1">
-              <span className="text-[10px] font-bold text-gray-500 uppercase">Saída Stdout (XML / Text):</span>
-              <pre className="bg-black p-3 rounded text-[11px] font-mono text-emerald-400 overflow-x-auto max-h-64 border border-gray-850">
+              <span className="text-[9px] font-bold text-zinc-500 uppercase">Saída Stdout (XML / Text):</span>
+              <pre className="bg-zinc-950 p-3 rounded-xl text-[10px] text-emerald-400 overflow-x-auto max-h-64 border border-zinc-800">
                 {stdout || 'Sem saída em stdout'}
               </pre>
             </div>
 
             {stderr && (
               <div className="space-y-1">
-                <span className="text-[10px] font-bold text-red-400 uppercase">Saída Stderr:</span>
-                <pre className="bg-red-950/60 p-3 rounded text-[11px] font-mono text-red-200 overflow-x-auto max-h-48 border border-red-900">
+                <span className="text-[9px] font-bold text-rose-400 uppercase">Saída Stderr:</span>
+                <pre className="bg-rose-950/40 p-3 rounded-xl text-[10px] text-rose-200 overflow-x-auto max-h-48 border border-rose-900">
                   {stderr}
                 </pre>
               </div>

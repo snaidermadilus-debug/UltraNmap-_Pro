@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Shield, Clock, XCircle, CheckCircle2, AlertCircle, StopCircle, Zap, Search } from 'lucide-react';
+import { Shield, Clock, XCircle, CheckCircle2, AlertCircle, StopCircle, Zap, Search, Terminal } from 'lucide-react';
 
 interface ScanProgressProps {
   job: any;
@@ -73,7 +73,7 @@ export default function ScanProgress({ job, onCancel, onViewDetails }: ScanProgr
   };
 
   const getStatusText = () => {
-    if (isQueued) return "Aguardando execução...";
+    if (isQueued) return "Aguardando execução na fila...";
     if (isRunning) return statusMessages[msgIndex];
     if (isCompleted) return "Auditoria concluída";
     if (isFailed) return "Não foi possível concluir a auditoria.";
@@ -88,197 +88,183 @@ export default function ScanProgress({ job, onCancel, onViewDetails }: ScanProgr
   const webServersCount = job.webResults?.length || 0;
 
   return (
-    <div className="w-full max-w-md mx-auto p-4 space-y-6">
-      {/* Main Status Card */}
+    <div className="w-full max-w-md mx-auto p-4 space-y-5 font-mono">
+      {/* Main Terminal Radar Status Card */}
       <motion.div 
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
-        className="bg-gray-900 border border-gray-800 rounded-3xl overflow-hidden shadow-2xl relative"
+        className="bg-zinc-950 border border-emerald-500/30 rounded-3xl overflow-hidden shadow-2xl shadow-emerald-950/20 relative"
       >
-        {/* Radar Background Animation (only when running) */}
+        {/* Tech Grid Background Lines */}
+        <div className="absolute inset-0 bg-[linear-gradient(to_right,#052e16_1px,transparent_1px),linear-gradient(to_bottom,#052e16_1px,transparent_1px)] bg-[size:24px_24px] opacity-25 pointer-events-none" />
+
+        {/* Radar Background Animation (only when running or queued) */}
         <AnimatePresence>
           {(isRunning || isQueued) && (
-            <div className="absolute inset-0 pointer-events-none opacity-20">
+            <div className="absolute inset-0 pointer-events-none opacity-25">
               <motion.div 
                 animate={{ rotate: 360 }}
                 transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-gradient-to-tr from-blue-500/20 to-transparent rounded-full"
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-gradient-to-tr from-emerald-500/30 via-emerald-500/5 to-transparent rounded-full"
               />
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full flex items-center justify-center">
-                <div className="w-48 h-48 border border-blue-500/30 rounded-full animate-pulse" />
-                <div className="absolute w-80 h-80 border border-blue-500/10 rounded-full" />
+                <div className="w-48 h-48 border border-emerald-500/40 rounded-full animate-pulse" />
+                <div className="absolute w-80 h-80 border border-emerald-500/15 rounded-full" />
               </div>
             </div>
           )}
         </AnimatePresence>
 
         <div className="p-6 relative z-10 flex flex-col items-center text-center space-y-6">
-          {/* Header Status */}
+          {/* Header Badge */}
           <div className="flex flex-col items-center">
              {isQueued ? (
-               <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mb-3 border border-amber-500/20 relative">
-                 <motion.div 
-                   animate={{ scale: [1, 1.15, 1] }}
-                   transition={{ duration: 2, repeat: Infinity }}
-                   className="absolute inset-0 bg-amber-500/10 rounded-full"
-                 />
-                 <Clock className="text-amber-400 relative z-10" size={28} />
+               <div className="w-14 h-14 bg-amber-500/10 rounded-2xl flex items-center justify-center mb-3 border border-amber-500/30 relative">
+                 <Clock className="text-amber-400 relative z-10" size={24} />
                </div>
              ) : isRunning ? (
-               <div className="w-16 h-16 bg-blue-500/10 rounded-full flex items-center justify-center mb-3 border border-blue-500/20 relative">
+               <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-3 border border-emerald-500/40 relative">
                  <motion.div 
-                   animate={{ scale: [1, 1.2, 1] }}
+                   animate={{ scale: [1, 1.25, 1] }}
                    transition={{ duration: 2, repeat: Infinity }}
-                   className="absolute inset-0 bg-blue-500/10 rounded-full"
+                   className="absolute inset-0 bg-emerald-500/15 rounded-2xl"
                  />
-                 <Search className="text-blue-400 relative z-10" size={28} />
+                 <Terminal className="text-emerald-400 relative z-10" size={24} />
                </div>
              ) : isCompleted ? (
-               <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mb-3 border border-emerald-500/20">
-                 <CheckCircle2 className="text-emerald-400" size={28} />
+               <div className="w-14 h-14 bg-emerald-500/10 rounded-2xl flex items-center justify-center mb-3 border border-emerald-500/40">
+                 <CheckCircle2 className="text-emerald-400" size={24} />
                </div>
              ) : isFailed ? (
-               <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mb-3 border border-red-500/20">
-                 <XCircle className="text-red-400" size={28} />
+               <div className="w-14 h-14 bg-rose-500/10 rounded-2xl flex items-center justify-center mb-3 border border-rose-500/40">
+                 <XCircle className="text-rose-400" size={24} />
                </div>
              ) : (
-               <div className="w-16 h-16 bg-gray-500/10 rounded-full flex items-center justify-center mb-3 border border-gray-500/20">
-                 <StopCircle className="text-gray-400" size={28} />
+               <div className="w-14 h-14 bg-zinc-800/40 rounded-2xl flex items-center justify-center mb-3 border border-zinc-700">
+                 <StopCircle className="text-zinc-400" size={24} />
                </div>
              )}
              
-             <h3 className={`text-lg font-bold tracking-tight ${isQueued ? 'text-amber-400' : isRunning ? 'text-blue-400' : isCompleted ? 'text-emerald-400' : isFailed ? 'text-red-400' : 'text-gray-400'}`}>
-                {isQueued ? 'Preparando auditoria' : 
-                 isRunning ? '🔵 SCANNER ATIVO' : 
-                 isCompleted ? '✓ Auditoria concluída' : 
-                 isFailed ? '🔴 AUDITORIA FALHOU' : '⚪ SCAN CANCELADO'}
+             <h3 className={`text-base font-black tracking-widest uppercase ${isQueued ? 'text-amber-400' : isRunning ? 'text-emerald-400' : isCompleted ? 'text-emerald-400' : isFailed ? 'text-rose-400' : 'text-zinc-400'}`}>
+                {isQueued ? '[ PREPARANDO AUDITORIA ]' : 
+                 isRunning ? '[ SCANNER ACTIVE ]' : 
+                 isCompleted ? '[ AUDITORIA CONCLUÍDA ]' : 
+                 isFailed ? '[ AUDITORIA FALHOU ]' : '[ SCAN CANCELADO ]'}
              </h3>
-             <p className="text-sm text-gray-300 font-medium mt-1">{getStatusText()}</p>
+             <p className="text-xs text-zinc-300 font-medium mt-1">{getStatusText()}</p>
           </div>
 
-          {/* Progress Radar Visualization */}
+          {/* Technological Neon Radar Sweep Visualizer */}
           {(isRunning || isQueued) && (
-            <div className="relative w-40 h-40 flex items-center justify-center">
-              {/* Radar Circles */}
-              <div className="absolute inset-0 border border-blue-500/20 rounded-full" />
-              <div className="absolute inset-4 border border-blue-500/10 rounded-full" />
-              <div className="absolute inset-8 border border-blue-500/5 rounded-full" />
+            <div className="relative w-36 h-36 flex items-center justify-center my-2">
+              <div className="absolute inset-0 border border-emerald-500/30 rounded-full" />
+              <div className="absolute inset-4 border border-emerald-500/20 rounded-full" />
+              <div className="absolute inset-8 border border-emerald-500/10 rounded-full" />
+              <div className="absolute inset-12 border border-emerald-500/5 rounded-full" />
               
-              {/* Radar Sweep */}
+              {/* Radar Sweep Arc */}
               <motion.div 
                 animate={{ rotate: 360 }}
                 transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
                 className="absolute w-full h-full"
               >
-                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1 h-1/2 bg-gradient-to-t from-blue-500 to-transparent origin-bottom" />
+                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-0.5 h-1/2 bg-gradient-to-t from-emerald-400 to-transparent origin-bottom shadow-[0_0_8px_#34d399]" />
               </motion.div>
 
-              {/* Central Pulse */}
+              {/* Central Pulse Indicator */}
               <motion.div 
-                 animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0.2, 0.5] }}
+                 animate={{ scale: [1, 1.4, 1], opacity: [0.6, 0.2, 0.6] }}
                  transition={{ duration: 1.5, repeat: Infinity }}
-                 className="w-12 h-12 bg-blue-500/20 rounded-full"
+                 className="w-10 h-10 bg-emerald-500/20 rounded-full"
               />
-              <Zap size={24} className="text-blue-400 relative z-10 animate-pulse" />
+              <Zap size={20} className="text-emerald-400 relative z-10 animate-pulse" />
             </div>
           )}
 
-          {/* Info Grid */}
-          <div className="w-full grid grid-cols-2 gap-4 text-left border-t border-b border-gray-800/60 py-4">
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Alvo</span>
-              <p className="text-sm font-mono text-white truncate">{job.target}</p>
+          {/* Info Parameter Grid */}
+          <div className="w-full grid grid-cols-2 gap-3 text-left border-t border-b border-zinc-800/80 py-3.5">
+            <div className="space-y-0.5">
+              <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block">TARGET</span>
+              <p className="text-xs font-bold text-zinc-100 truncate">{job.target}</p>
             </div>
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Perfil</span>
-              <p className="text-sm font-semibold text-gray-200 uppercase">{job.type}</p>
+            <div className="space-y-0.5">
+              <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block">PROFILE</span>
+              <p className="text-xs font-bold text-emerald-400 uppercase">{job.type}</p>
             </div>
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Tempo</span>
-              <p className="text-sm font-mono text-white">{formatTime(elapsed)}</p>
+            <div className="space-y-0.5">
+              <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block">TEMPO DE SCAN</span>
+              <p className="text-xs font-bold text-cyan-300 font-mono">{formatTime(elapsed)}</p>
             </div>
-            <div className="space-y-1">
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest block">Status</span>
-              <p className={`text-sm font-bold ${isRunning ? 'text-blue-400' : isCompleted ? 'text-emerald-400' : isFailed ? 'text-red-400' : 'text-gray-400'}`}>
-                {isQueued ? 'Em fila...' : isRunning ? 'Executando Nmap...' : job.status.toUpperCase()}
+            <div className="space-y-0.5">
+              <span className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest block">STATUS REAL</span>
+              <p className={`text-xs font-bold ${isRunning ? 'text-emerald-400' : isCompleted ? 'text-emerald-400' : isFailed ? 'text-rose-400' : 'text-zinc-400'}`}>
+                {isQueued ? 'QUEUED' : isRunning ? 'RUNNING' : job.status.toUpperCase()}
               </p>
             </div>
           </div>
 
-          {/* Results Summary (when completed) */}
+          {/* Completed Audit Summary */}
           {isCompleted && (
             <motion.div 
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="w-full bg-gray-950/50 border border-gray-800 rounded-2xl p-4 space-y-4"
+              className="w-full bg-zinc-900/60 border border-zinc-800 rounded-2xl p-3.5 space-y-3"
             >
-              <div className="flex justify-between items-center pb-2 border-b border-gray-800/50">
-                <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Resultado encontrado</span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${isHostUp ? 'bg-emerald-950/80 text-emerald-300 border-emerald-800' : 'bg-red-950/80 text-red-300 border-red-800'}`}>
-                   {isHostUp ? '🟢 Host Online' : '🔴 Host não encontrado'}
+              <div className="flex justify-between items-center pb-2 border-b border-zinc-800">
+                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">[ RESULTADOS ]</span>
+                <span className={`text-[9px] font-bold px-2 py-0.5 rounded border ${isHostUp ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-rose-950 text-rose-400 border-rose-800'}`}>
+                   {isHostUp ? '[ HOST ONLINE ]' : '[ HOST NÃO ENCONTRADO ]'}
                 </span>
               </div>
               
-              <div className="grid grid-cols-3 gap-2">
-                 <div className="text-center">
-                    <span className="text-xl font-bold text-emerald-400 font-mono">{openPortsCount}</span>
-                    <span className="text-[9px] text-gray-500 block uppercase font-bold">Portas Abertas</span>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                 <div>
+                    <span className="text-lg font-bold text-emerald-400 font-mono">{openPortsCount}</span>
+                    <span className="text-[8px] text-zinc-500 block uppercase font-bold">PORTAS ABERTAS</span>
                  </div>
-                 <div className="text-center border-x border-gray-800/50">
-                    <span className="text-xl font-bold text-blue-400 font-mono">{servicesCount}</span>
-                    <span className="text-[9px] text-gray-500 block uppercase font-bold">Serviços</span>
+                 <div className="border-x border-zinc-800">
+                    <span className="text-lg font-bold text-cyan-400 font-mono">{servicesCount}</span>
+                    <span className="text-[8px] text-zinc-500 block uppercase font-bold">SERVIÇOS</span>
                  </div>
-                 <div className="text-center">
-                    <span className="text-xl font-bold text-purple-400 font-mono">{webServersCount}</span>
-                    <span className="text-[9px] text-gray-500 block uppercase font-bold">Servidores Web</span>
+                 <div>
+                    <span className="text-lg font-bold text-purple-400 font-mono">{webServersCount}</span>
+                    <span className="text-[8px] text-zinc-500 block uppercase font-bold">SERVIDORES WEB</span>
                  </div>
               </div>
             </motion.div>
           )}
 
-          {/* Error Message (when failed) */}
+          {/* Failure Alert Box */}
           {isFailed && (
-            <div className="w-full p-4 bg-red-950/20 border border-red-900/50 rounded-2xl">
-               <p className="text-xs text-red-300 leading-relaxed font-semibold">
-                 Não foi possível concluir a auditoria.
+            <div className="w-full p-3.5 bg-rose-950/30 border border-rose-900/60 rounded-2xl">
+               <p className="text-xs text-rose-300 font-medium">
+                 Não foi possível concluir a auditoria técnica.
                </p>
             </div>
           )}
 
-          {/* Actions */}
-          <div className="w-full pt-2">
+          {/* Action Buttons */}
+          <div className="w-full pt-1">
             {isRunning && (
               <button 
                 onClick={onCancel}
-                className="w-full bg-red-950/80 hover:bg-red-900 text-red-300 border border-red-800/50 p-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg active:scale-95"
+                className="w-full bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800 p-3.5 rounded-2xl font-bold text-xs tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95 uppercase"
               >
-                <StopCircle size={18} /> CANCELAR SCAN
+                <StopCircle size={16} /> [ CANCELAR SCAN ]
               </button>
             )}
             
             {(isCompleted || isFailed || isCancelled) && (
               <button 
                 onClick={onViewDetails}
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white p-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-xl shadow-blue-950/50 active:scale-95"
+                className="w-full bg-emerald-500 hover:bg-emerald-400 text-black p-3.5 rounded-2xl font-bold text-xs tracking-widest flex items-center justify-center gap-2 transition-all active:scale-95 shadow-lg shadow-emerald-950/50 uppercase"
               >
-                <Shield size={18} /> VER DIAGNÓSTICO
+                <Shield size={16} /> [ VER DIAGNÓSTICO ]
               </button>
             )}
           </div>
         </div>
       </motion.div>
-
-      {/* Security Footer */}
-      {(isRunning || isQueued) && (
-        <motion.div 
-          animate={{ opacity: [0.5, 1, 0.5] }}
-          transition={{ duration: 4, repeat: Infinity }}
-          className="flex items-center justify-center gap-2 text-gray-500"
-        >
-          <Shield size={14} />
-          <span className="text-[10px] font-bold uppercase tracking-widest">Auditoria em conformidade Nmap</span>
-        </motion.div>
-      )}
     </div>
   );
 }

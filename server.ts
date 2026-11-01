@@ -173,8 +173,8 @@ export async function startServer() {
     res.json({
       success: true,
       data: {
-        nmap: nmapStatus,
         server: 'online',
+        nmap: nmapStatus,
         nmapVersion
       }
     });
@@ -224,7 +224,7 @@ export async function startServer() {
     if (!targetCidr || targetCidr === 'não detectado') {
       return res.status(400).json({
         success: false,
-        error: 'Rede local não detectada. Por favor, informe um CIDR manualmente (ex: 192.168.1.0/24).'
+        error: 'Não foi possível detectar a rede local. Informe um CIDR manualmente.'
       });
     }
 
@@ -290,6 +290,35 @@ export async function startServer() {
         webResults: job.webResults || [] 
       } 
     });
+  });
+
+  app.delete('/api/scans/:id', async (req, res) => {
+    const db = await readDb();
+    const jobIndex = db.jobs.findIndex((j: any) => j.id === req.params.id);
+    
+    if (jobIndex === -1) {
+      return res.status(404).json({ success: false, error: 'Job não encontrado.' });
+    }
+
+    const job = db.jobs[jobIndex];
+    if (job.status === 'running' || job.status === 'queued') {
+      return res.status(400).json({ success: false, error: 'Não é possível excluir auditorias ativas ou na fila.' });
+    }
+
+    db.jobs.splice(jobIndex, 1);
+    await writeDb(db);
+    res.json({ success: true });
+  });
+
+  app.delete('/api/history', async (req, res) => {
+    const db = await readDb();
+    const activeJobs = db.jobs.filter((j: any) => j.status === 'running' || j.status === 'queued');
+    const removedCount = db.jobs.length - activeJobs.length;
+
+    db.jobs = activeJobs;
+    await writeDb(db);
+
+    res.json({ success: true, removedCount });
   });
 
   app.post('/api/scans/:id/cancel', async (req, res) => {

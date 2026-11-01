@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Zap, List, Flame, Cpu, Globe, Server, Radio, Play, RefreshCw } from 'lucide-react';
+import { Search, Zap, List, Flame, Cpu, Globe, Server, Radio, Play, RefreshCw, Terminal, Wifi } from 'lucide-react';
 
 interface ScannerProps {
   setActiveTab: (tab: string) => void;
@@ -9,21 +9,21 @@ interface ScannerProps {
 
 const scanCategories = [
   {
-    category: 'DESCOBERTA',
+    category: 'DESCOBERTA DE REDE',
     items: [
       {
         id: 'discovery',
-        name: 'Descoberta de Host',
+        name: 'Descoberta de Host (-sn)',
         icon: Zap,
-        desc: 'Verifica se o alvo está ativo via ARP/ICMP (nmap -sn).',
-        intensity: 'Super Rápido',
+        desc: 'Verifica se o alvo está ativo via ARP/ICMP ping.',
+        intensity: 'SUPER RÁPIDO',
       },
       {
         id: 'network',
         name: 'Minha Rede Local',
         icon: Radio,
-        desc: 'Varre toda a sub-rede CIDR local e descobre dispositivos.',
-        intensity: 'Automático',
+        desc: 'Varre a sub-rede CIDR local e descobre todos os dispositivos.',
+        intensity: 'AUTOMÁTICO',
       },
     ],
   },
@@ -32,31 +32,31 @@ const scanCategories = [
     items: [
       {
         id: 'fast',
-        name: 'Scan Rápido (-Pn)',
+        name: 'Scan Rápido (-Pn -F)',
         icon: Zap,
-        desc: 'Verifica as 100 portas mais críticas sem ping prévio.',
-        intensity: 'Rápido',
+        desc: 'Analisa as 100 portas TCP mais críticas sem ICMP prévio.',
+        intensity: 'RÁPIDO',
       },
       {
         id: 'common',
-        name: 'Portas Comuns (Top 100)',
+        name: 'Top 100 Portas (-Pn)',
         icon: List,
         desc: 'Analisa as 100 portas TCP mais frequentes com -Pn.',
-        intensity: 'Moderado',
+        intensity: 'MODERADO',
       },
       {
         id: 'top1000',
-        name: 'Top 1000 Portas',
+        name: 'Top 1000 Portas (-Pn)',
         icon: Server,
-        desc: 'Analisa as 1000 portas TCP mais utilizadas com -Pn.',
-        intensity: 'Completo',
+        desc: 'Analisa as 1000 portas TCP padrão do Nmap.',
+        intensity: 'COMPLETO',
       },
       {
         id: 'all',
-        name: 'Todas as Portas (65k)',
+        name: 'Todas as Portas (-p-)',
         icon: Flame,
         desc: 'Intervalo TCP completo de 1 a 65535 com -Pn.',
-        intensity: 'Lento',
+        intensity: 'LENTO',
       },
     ],
   },
@@ -65,17 +65,17 @@ const scanCategories = [
     items: [
       {
         id: 'services',
-        name: 'Detecção de Serviços',
+        name: 'Detecção de Serviços (-sV)',
         icon: Cpu,
-        desc: 'Identifica versões exatas de serviços rodando nas portas (-sV).',
-        intensity: 'Detalhado',
+        desc: 'Identifica versões exatas de serviços rodando nas portas.',
+        intensity: 'DETALHADO',
       },
       {
         id: 'web',
         name: 'Servidores Web HTTP/S',
         icon: Globe,
-        desc: 'Procura portas web (80,443,8080...) e testa requisições HTTP reais.',
-        intensity: 'Focado',
+        desc: 'Varre portas HTTP/S (80,443,8080...) com probe web automático.',
+        intensity: 'FOCADO',
       },
     ],
   },
@@ -84,31 +84,41 @@ const scanCategories = [
     items: [
       {
         id: 'os',
-        name: 'Detecção de SO',
+        name: 'Detecção de SO (-O)',
         icon: Server,
-        desc: 'Tenta identificar o Sistema Operacional do host (-O).',
-        intensity: 'Avançado',
+        desc: 'Tenta identificar o Sistema Operacional do host.',
+        intensity: 'AVANÇADO',
       },
       {
         id: 'udp',
-        name: 'Portas UDP Comuns',
+        name: 'Portas UDP Comuns (-sU)',
         icon: Radio,
         desc: 'Varre portas UDP essenciais (DNS, NTP, SNMP, mDNS).',
-        intensity: 'Moderado',
+        intensity: 'MODERADO',
       },
     ],
   },
 ];
 
 export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: ScannerProps) {
-  const [target, setTarget] = useState(initialTarget || '192.168.1.8');
+  const [target, setTarget] = useState(initialTarget || '');
   const [selectedProfile, setSelectedProfile] = useState('fast');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [detectedCidr, setDetectedCidr] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialTarget) {
       setTarget(initialTarget);
+    } else {
+      fetch('/api/network')
+        .then(r => r.json())
+        .then(d => {
+          if (d.success && d.data?.cidr && d.data.cidr !== 'não detectado') {
+            setDetectedCidr(d.data.cidr);
+          }
+        })
+        .catch(() => {});
     }
   }, [initialTarget]);
 
@@ -148,47 +158,66 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
   };
 
   return (
-    <div className="p-4 space-y-6 text-white pb-28 max-w-4xl mx-auto">
-      <div>
-        <h2 className="text-2xl font-bold flex items-center gap-2">
-          <Search className="text-blue-500" /> Scanner de Rede
-        </h2>
-        <p className="text-xs text-gray-400 mt-1">
-          Selecione o perfil de auditoria Nmap e informe o alvo real para execução.
-        </p>
+    <div className="p-4 space-y-5 text-zinc-100 pb-28 max-w-4xl mx-auto font-sans">
+      {/* Header */}
+      <div className="border-b border-zinc-800/80 pb-3 flex justify-between items-end">
+        <div>
+          <h2 className="text-xl font-black font-mono tracking-widest text-emerald-400 uppercase flex items-center gap-2">
+            <Terminal size={18} /> TARGET // CONFIGURATION
+          </h2>
+          <p className="text-[11px] font-mono text-zinc-500 mt-0.5">
+            [ DEFINE AUDIT TARGET AND NMAP PROFILE PARAMETERS ]
+          </p>
+        </div>
+        <span className="text-[10px] font-mono text-emerald-400/80 px-2 py-0.5 rounded bg-emerald-950/40 border border-emerald-500/30">
+          [ NMAP READY ]
+        </span>
       </div>
 
       {/* Target Input Card */}
-      <div className="bg-gray-900 p-4 rounded-xl border border-gray-800 space-y-3">
-        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider block">
-          Endereço do Alvo
-        </label>
+      <div className="bg-zinc-950/80 p-4 rounded-2xl border border-zinc-800 space-y-3 shadow-xl">
+        <div className="flex justify-between items-center">
+          <label className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest block">
+            TARGET ADDRESS (IP / CIDR / HOSTNAME)
+          </label>
+          {detectedCidr && !target && (
+            <button
+              onClick={() => setTarget(detectedCidr)}
+              className="text-[10px] font-mono text-emerald-400 hover:underline flex items-center gap-1"
+            >
+              <Wifi size={10} /> Usar {detectedCidr}
+            </button>
+          )}
+        </div>
+
         <div className="relative">
           <input
             type="text"
             value={target}
             onChange={(e) => setTarget(e.target.value)}
-            placeholder="Ex: 192.168.1.8 ou 192.168.1.0/24"
-            className="w-full bg-gray-950 p-3.5 rounded-lg border border-gray-700 text-white font-mono text-sm focus:border-blue-500 focus:outline-none pr-10"
+            placeholder="Ex: 192.168.1.1 ou 192.168.1.0/24 ou target.local"
+            className="w-full bg-zinc-900/90 p-3.5 rounded-xl border border-zinc-700 text-emerald-400 font-mono text-sm focus:border-emerald-500 focus:outline-none pr-24 shadow-inner"
           />
-          <span className="absolute right-3 top-3.5 text-xs text-gray-500 font-mono">IPv4 / Host</span>
+          <span className="absolute right-3 top-3.5 text-[10px] text-zinc-500 font-mono uppercase border border-zinc-800 px-2 py-0.5 rounded bg-black">
+            IPv4 / HOST
+          </span>
         </div>
 
         {errorMsg && (
-          <div className="p-3 bg-red-950/80 border border-red-800 text-red-200 text-xs rounded-lg">
-            {errorMsg}
+          <div className="p-3 bg-rose-950/80 border border-rose-800 text-rose-200 text-xs font-mono rounded-xl">
+            [ ERROR ]: {errorMsg}
           </div>
         )}
       </div>
 
       {/* Profile Categories Grid */}
-      <div className="space-y-6">
+      <div className="space-y-5">
         {scanCategories.map((cat) => (
-          <div key={cat.category} className="space-y-3">
-            <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider px-1">
-              {cat.category}
+          <div key={cat.category} className="space-y-2.5">
+            <h3 className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest px-1 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {cat.category}
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
               {cat.items.map((item) => {
                 const IconComponent = item.icon;
                 const isSelected = selectedProfile === item.id;
@@ -197,23 +226,23 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
                   <button
                     key={item.id}
                     onClick={() => handleSelectOption(item.id)}
-                    className={`p-4 rounded-xl border text-left transition-all relative flex flex-col justify-between ${
+                    className={`p-4 rounded-2xl border text-left transition-all relative flex flex-col justify-between ${
                       isSelected
-                        ? 'bg-blue-950/90 border-blue-500 shadow-lg shadow-blue-950/50'
-                        : 'bg-gray-900 border-gray-800 hover:border-gray-700'
+                        ? 'bg-emerald-950/40 border-emerald-500 shadow-lg shadow-emerald-950/50'
+                        : 'bg-zinc-900/60 border-zinc-800/80 hover:border-zinc-700'
                     }`}
                   >
                     <div>
                       <div className="flex justify-between items-center mb-2">
-                        <div className={`p-2 rounded-lg ${isSelected ? 'bg-blue-600 text-white' : 'bg-gray-800 text-blue-400'}`}>
-                          <IconComponent size={18} />
+                        <div className={`p-2 rounded-xl ${isSelected ? 'bg-emerald-500 text-black' : 'bg-zinc-800 text-emerald-400'}`}>
+                          <IconComponent size={16} />
                         </div>
-                        <span className="text-[10px] px-2 py-0.5 rounded font-bold bg-gray-800 text-gray-400 border border-gray-700">
+                        <span className="text-[9px] font-mono px-2 py-0.5 rounded font-bold bg-zinc-950 text-zinc-400 border border-zinc-800">
                           {item.intensity}
                         </span>
                       </div>
-                      <h4 className="font-bold text-sm text-white mb-1">{item.name}</h4>
-                      <p className="text-xs text-gray-400 leading-relaxed">{item.desc}</p>
+                      <h4 className="font-mono font-bold text-xs text-zinc-100 mb-1">{item.name}</h4>
+                      <p className="text-[11px] text-zinc-400 leading-relaxed">{item.desc}</p>
                     </div>
                   </button>
                 );
@@ -227,16 +256,16 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
       <button
         onClick={startScan}
         disabled={loading}
-        className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 p-4 rounded-xl font-bold text-sm text-white shadow-xl shadow-blue-950/50 flex items-center justify-center gap-2 transition-all border border-blue-400/30"
+        className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:bg-zinc-800 p-4 rounded-2xl font-mono font-black text-sm text-black shadow-xl shadow-emerald-950/50 flex items-center justify-center gap-2 transition-all active:scale-95 border border-emerald-400/30 tracking-widest uppercase"
       >
         {loading ? (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 text-black">
             <RefreshCw size={18} className="animate-spin" />
-            INICIANDO AUDITORIA...
+            [ SCANNER ACTIVE ]
           </div>
         ) : (
           <>
-            <Play size={18} fill="currentColor" /> INICIAR AUDITORIA ({selectedProfile.toUpperCase()})
+            <Play size={18} fill="currentColor" /> [ INICIAR AUDITORIA: {selectedProfile.toUpperCase()} ]
           </>
         )}
       </button>
