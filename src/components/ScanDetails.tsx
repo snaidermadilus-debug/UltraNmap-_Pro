@@ -1,13 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Shield, ExternalLink, Terminal, CheckCircle2, XCircle, AlertCircle, Clock, Server, Globe } from 'lucide-react';
+import { Shield, ExternalLink, Terminal, CheckCircle2, XCircle, AlertCircle, Clock, Server, Globe, ChevronLeft } from 'lucide-react';
+import ScanProgress from './ScanProgress';
 
 interface ScanDetailsProps {
   id: string;
+  onBack?: () => void;
 }
 
-export default function ScanDetails({ id }: ScanDetailsProps) {
+export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
   const [job, setJob] = useState<any>(null);
   const [showTech, setShowTech] = useState(false);
+  const [viewMode, setViewMode] = useState<'progress' | 'technical'>('progress');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -35,30 +38,63 @@ export default function ScanDetails({ id }: ScanDetailsProps) {
     return () => clearInterval(interval);
   }, [id]);
 
+  const handleCancel = async () => {
+    try {
+      await fetch(`/api/scans/${id}/cancel`, { method: 'POST' });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   if (loading && !job) {
     return (
-      <div className="p-8 text-center text-gray-400 space-y-3">
-        <Clock className="animate-spin mx-auto text-blue-500" size={32} />
-        <p className="text-sm font-semibold">Carregando relatório da auditoria...</p>
+      <div className="p-8 text-center text-gray-400 space-y-4">
+        <div className="w-16 h-16 bg-gray-900 border border-gray-800 rounded-full flex items-center justify-center mx-auto">
+          <Clock className="animate-spin text-blue-500" size={24} />
+        </div>
+        <p className="text-sm font-semibold tracking-tight">Carregando auditoria...</p>
       </div>
     );
   }
 
   if (!job) {
     return (
-      <div className="p-6 text-center text-red-400 space-y-2">
-        <XCircle className="mx-auto" size={32} />
+      <div className="p-6 text-center text-red-400 space-y-3">
+        <XCircle className="mx-auto" size={48} />
         <p className="font-bold">Auditoria não encontrada.</p>
+        {onBack && (
+           <button onClick={onBack} className="text-blue-400 text-sm font-bold underline">VOLTAR</button>
+        )}
       </div>
     );
   }
 
   const { parsedData, status, target, type, stdout, stderr, nmapCommand, exit_code, webResults } = job;
+
+  if (viewMode === 'progress') {
+    return (
+      <div className="pb-28">
+         <div className="p-4 flex items-center gap-3">
+           {onBack && (
+             <button onClick={onBack} className="p-2 bg-gray-900 border border-gray-800 rounded-xl text-gray-400">
+               <ChevronLeft size={20} />
+             </button>
+           )}
+           <h2 className="text-xl font-bold">Andamento</h2>
+         </div>
+         <ScanProgress 
+            job={job} 
+            onCancel={handleCancel} 
+            onViewDetails={() => setViewMode('technical')} 
+          />
+      </div>
+    );
+  }
+
   const host = Array.isArray(parsedData) && parsedData.length > 0 ? parsedData[0] : null;
   const ports = host?.ports || [];
   const openPorts = ports.filter((p: any) => p.state === 'open');
   const isHostUp = host ? host.status === 'up' : false;
-
   const confirmedWebServers = webResults || [];
 
   const getHumanDiagnosis = () => {
@@ -125,10 +161,14 @@ export default function ScanDetails({ id }: ScanDetailsProps) {
     <div className="p-4 space-y-6 text-white pb-28 max-w-4xl mx-auto">
       {/* Header */}
       <div className="flex justify-between items-start border-b border-gray-800 pb-4">
-        <div>
-          <span className="text-xs font-mono text-blue-400 block uppercase">Relatório de Auditoria</span>
-          <h2 className="text-2xl font-bold font-mono text-white">{target}</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Perfil: <span className="text-gray-200 uppercase font-semibold">{type}</span></p>
+        <div className="flex items-center gap-3">
+           <button onClick={() => setViewMode('progress')} className="p-2 bg-gray-900 border border-gray-800 rounded-xl text-gray-400">
+             <ChevronLeft size={20} />
+           </button>
+           <div>
+             <span className="text-xs font-mono text-blue-400 block uppercase">Diagnóstico Técnico</span>
+             <h2 className="text-2xl font-bold font-mono text-white">{target}</h2>
+           </div>
         </div>
 
         <span

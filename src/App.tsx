@@ -53,7 +53,7 @@ export default function App() {
         {activeTab === 'logs' && <Logs />}
 
         {activeTab === 'details' && selectedJob && (
-          <ScanDetails id={selectedJob} />
+          <ScanDetails id={selectedJob} onBack={() => setActiveTab('history')} />
         )}
       </main>
 

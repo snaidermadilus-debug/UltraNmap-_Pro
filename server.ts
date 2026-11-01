@@ -1,18 +1,56 @@
+import 'dotenv/config';
 import express from 'express';
 import { execSync } from 'child_process';
 import os from 'os';
+import crypto from 'crypto';
 import { readDb, writeDb } from './src/db/db.js';
 import { runScan, cancelScan } from './src/scanner/scanner.js';
 import { parseNmapXML } from './src/scanner/parser.js';
-import { probeWeb } from './src/scanner/webProbe.js';
+
+function netmaskToPrefix(netmask: string): number {
+  return netmask
+    .split('.')
+    .map(Number)
+    .map(n => (n >>> 0).toString(2).split('1').length - 1)
+    .reduce((acc, curr) => acc + curr, 0);
+}
+
+function calculateCidr(ip: string, prefixOrNetmask: string | number): string | null {
+  if (!ip || ip === '127.0.0.1') return null;
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) return null;
+
+  let prefix = 24;
+  if (typeof prefixOrNetmask === 'number') {
+    prefix = prefixOrNetmask;
+  } else if (typeof prefixOrNetmask === 'string') {
+    prefix = netmaskToPrefix(prefixOrNetmask);
+  }
+
+  if (prefix < 0 || prefix > 32) return null;
+
+  const maskNum = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  const ipNum = ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+  const netNum = (ipNum & maskNum) >>> 0;
+
+  const netParts = [
+    (netNum >>> 24) & 0xff,
+    (netNum >>> 16) & 0xff,
+    (netNum >>> 8) & 0xff,
+    netNum & 0xff
+  ];
+
+  return `${netParts.join('.')}/${prefix}`;
+}
 
 export function getLocalNetworkInfo() {
-  let ip = '127.0.0.1';
-  let interfaceName = 'lo';
-  let cidr = '127.0.0.1/32';
-  let gateway = '192.168.1.1';
-  let netmask = '255.255.255.0';
+  let ip: string | null = null;
+  let interfaceName: string | null = null;
+  let cidr: string | null = null;
+  let gateway: string | null = null;
+  let netmask: string | null = null;
 
+  // 1. Try ip -j addr and ip -j route
   try {
     const addrOutput = execSync('ip -j addr show').toString();
     const routeOutput = execSync('ip -j route show default').toString();
@@ -22,42 +60,52 @@ export function getLocalNetworkInfo() {
     for (const iface of addrJson) {
       if (iface.ifname !== 'lo' && iface.addr_info) {
         const v4 = iface.addr_info.find((a: any) => a.family === 'inet');
-        if (v4) {
+        if (v4 && v4.local && !v4.local.startsWith('127.')) {
           ip = v4.local;
           interfaceName = iface.ifname;
-          const prefix = v4.prefixlen || 24;
-          const parts = ip.split('.').map(Number);
-          if (prefix === 24) parts[3] = 0;
-          cidr = `${parts.join('.')}/${prefix}`;
+          const prefix = v4.prefixlen ?? 24;
+          if (ip) cidr = calculateCidr(ip, prefix);
           break;
         }
       }
     }
-    if (routeJson && routeJson[0] && routeJson[0].gateway) {
+
+    if (routeJson && Array.isArray(routeJson) && routeJson[0] && routeJson[0].gateway) {
       gateway = routeJson[0].gateway;
     }
   } catch (e) {
-    const interfaces = os.networkInterfaces();
-    for (const name of Object.keys(interfaces)) {
-      if (!name.includes('lo')) {
-        const list = interfaces[name];
-        if (list) {
-          const v4 = list.find(item => item.family === 'IPv4' && !item.internal);
-          if (v4) {
-            ip = v4.address;
-            interfaceName = name;
-            netmask = v4.netmask;
-            const parts = ip.split('.').map(Number);
-            parts[3] = 0;
-            cidr = `${parts.join('.')}/24`;
-            break;
+    // Command ip not available or failed
+  }
+
+  // 2. Fallback to os.networkInterfaces()
+  if (!ip) {
+    try {
+      const interfaces = os.networkInterfaces();
+      for (const name of Object.keys(interfaces)) {
+        if (name !== 'lo' && !name.includes('loopback')) {
+          const list = interfaces[name];
+          if (list) {
+            const v4 = list.find(item => item.family === 'IPv4' && !item.internal);
+            if (v4) {
+              ip = v4.address;
+              interfaceName = name;
+              netmask = v4.netmask;
+              if (ip) cidr = calculateCidr(ip, v4.netmask);
+              break;
+            }
           }
         }
       }
-    }
+    } catch (e) {}
   }
 
-  return { ip, interface: interfaceName, cidr, gateway, netmask };
+  return {
+    ip: ip || 'não detectado',
+    interface: interfaceName || 'não detectado',
+    cidr: cidr || 'não detectado',
+    gateway: gateway || 'não detectado',
+    netmask: netmask || 'não detectado'
+  };
 }
 
 export async function startServer() {
@@ -68,6 +116,7 @@ export async function startServer() {
     if (job.status === 'running') {
       job.status = 'failed';
       job.stderr = 'Servidor foi reiniciado durante a execução do scan.';
+      job.end_time = new Date().toISOString();
     }
   });
   await writeDb(db);
@@ -113,8 +162,8 @@ export async function startServer() {
 
   app.post('/api/network/scan', async (req, res) => {
     const netInfo = getLocalNetworkInfo();
-    const targetCidr = (req.body && req.body.cidr) ? req.body.cidr.trim() : netInfo.cidr;
-    const id = Math.random().toString(36).substring(7);
+    const targetCidr = (req.body && req.body.cidr) ? req.body.cidr.trim() : (netInfo.cidr !== 'não detectado' ? netInfo.cidr : '127.0.0.1/32');
+    const id = crypto.randomUUID();
 
     const db = await readDb();
     db.jobs.push({
@@ -122,7 +171,9 @@ export async function startServer() {
       target: targetCidr,
       type: 'discovery',
       status: 'queued',
-      start_time: new Date().toISOString()
+      queued_at: new Date().toISOString(),
+      start_time: null,
+      end_time: null
     });
     await writeDb(db);
     
@@ -137,14 +188,16 @@ export async function startServer() {
       return res.status(400).json({ success: false, error: 'Alvo e tipo de scan são obrigatórios.' });
     }
 
-    const id = Math.random().toString(36).substring(7);
+    const id = crypto.randomUUID();
     const db = await readDb();
     db.jobs.push({
       id,
       target: target.trim(),
       type,
       status: 'queued',
-      start_time: new Date().toISOString()
+      queued_at: new Date().toISOString(),
+      start_time: null,
+      end_time: null
     });
     await writeDb(db);
     
@@ -158,39 +211,21 @@ export async function startServer() {
     const job = db.jobs.find((j: any) => j.id === req.params.id);
     if (!job) return res.status(404).json({ success: false, error: 'Job não encontrado' });
     
-    let parsedData = null;
-    let webResults: any[] = [];
-
-    if (job.status === 'completed' && job.stdout) {
+    let parsedData = job.parsedData || null;
+    if (!parsedData && job.status === 'completed' && job.stdout) {
       try {
         parsedData = await parseNmapXML(job.stdout);
-        
-        if (Array.isArray(parsedData)) {
-          for (const host of parsedData) {
-            for (const portObj of host.ports) {
-              if (portObj.state === 'open') {
-                const svc = (portObj.service || '').toLowerCase();
-                const pNum = Number(portObj.port);
-                const isWebPort = [80, 443, 8080, 8443, 8000, 8888, 3000, 5000].includes(pNum);
-                const isWebService = svc.includes('http') || svc.includes('ssl') || svc.includes('web');
-
-                if (isWebService || isWebPort) {
-                  const protocol = (svc.includes('https') || svc.includes('ssl') || pNum === 443 || pNum === 8443) ? 'https' : 'http';
-                  const web = await probeWeb(host.address, portObj.port, protocol);
-                  if (web.confirmed) {
-                    webResults.push(web);
-                  }
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        console.error('[PARSING / PROBING ERROR]', e);
-      }
+      } catch (e) {}
     }
 
-    res.json({ success: true, data: { ...job, parsedData, webResults } });
+    res.json({ 
+      success: true, 
+      data: { 
+        ...job, 
+        parsedData, 
+        webResults: job.webResults || [] 
+      } 
+    });
   });
 
   app.post('/api/scans/:id/cancel', async (req, res) => {
@@ -200,7 +235,11 @@ export async function startServer() {
 
   app.get('/api/history', async (req, res) => {
     const db = await readDb();
-    const sorted = db.jobs.sort((a: any, b: any) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
+    const sorted = db.jobs.sort((a: any, b: any) => {
+      const timeA = new Date(a.queued_at || a.start_time || 0).getTime();
+      const timeB = new Date(b.queued_at || b.start_time || 0).getTime();
+      return timeB - timeA;
+    });
     res.json({ success: true, data: sorted });
   });
 
@@ -215,7 +254,6 @@ export async function startServer() {
   });
 }
 
-// Execute startServer when executed directly
 if (process.argv[1] && process.argv[1].endsWith('server.ts')) {
   startServer().catch(console.error);
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Zap, List, Flame, Cpu, Globe, Server, Radio, Play } from 'lucide-react';
+import { Search, Zap, List, Flame, Cpu, Globe, Server, Radio, Play, RefreshCw } from 'lucide-react';
 
 interface ScannerProps {
   setActiveTab: (tab: string) => void;
@@ -230,7 +230,10 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
         className="w-full bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 p-4 rounded-xl font-bold text-sm text-white shadow-xl shadow-blue-950/50 flex items-center justify-center gap-2 transition-all border border-blue-400/30"
       >
         {loading ? (
-          'Disparando Job Nmap...'
+          <div className="flex items-center gap-2">
+            <RefreshCw size={18} className="animate-spin" />
+            INICIANDO AUDITORIA...
+          </div>
         ) : (
           <>
             <Play size={18} fill="currentColor" /> INICIAR AUDITORIA ({selectedProfile.toUpperCase()})

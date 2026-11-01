@@ -1,102 +1,66 @@
 # Ultra Nmap Pro
 
-Painel web mobile-first para execução, acompanhamento e análise de
-auditorias Nmap em ambiente local, com foco em Termux/Android.
+Painel web mobile-first profissional para execução, acompanhamento e análise de auditorias Nmap em ambiente local e Termux/Android.
 
-O projeto fornece uma interface gráfica para iniciar auditorias reais,
-acompanhar jobs, visualizar resultados estruturados, consultar histórico
-e analisar a saída técnica do Nmap.
+O projeto fornece uma interface gráfica interativa para iniciar auditorias reais, acompanhar jobs em tempo real com radar visual e cronômetro, consultar histórico persistente e analisar diagnósticos humanos e técnicos.
 
-> **Uso responsável:** utilize o Ultra Nmap Pro somente em dispositivos,
-> redes e sistemas para os quais você tenha autorização para realizar
-> testes.
+> **Uso responsável:** utilize o Ultra Nmap Pro somente em dispositivos, redes e sistemas para os quais você tenha autorização explícita para realizar auditorias.
 
-------------------------------------------------------------------------
+---
 
-## ✨ Principais recursos
+## ✨ Principais Recursos
 
--   Interface web responsiva e mobile-first.
--   Execução real do Nmap pelo backend.
--   Gerenciamento de jobs de auditoria.
--   Estados de execução:
-    -   `queued`
-    -   `running`
-    -   `completed`
-    -   `failed`
-    -   `cancelled`
--   Cancelamento real de processos em execução.
--   Parser de XML do Nmap para dados estruturados.
--   Resumo dos resultados em linguagem mais simples.
--   Visualização de portas e serviços encontrados.
--   Saída técnica do Nmap em seção recolhível.
--   Histórico persistente das auditorias.
--   Busca e filtragem do histórico.
--   Logs do sistema.
--   Dashboard com dados reais.
--   Persistência local usando LowDB/JSON.
--   Fila de escrita para reduzir riscos de corrupção do arquivo de dados
-    em gravações concorrentes.
--   Limite de histórico para evitar crescimento indefinido do banco
-    JSON.
--   Execução local por padrão em `127.0.0.1:8080`.
+- **Interface Mobile-First Modernizada**: Projetada para telas pequenas (360px a 430px+) com visual estilo NOC / Security Dashboard.
+- **Acompanhamento Visual com Radar Animado**: Componente de progresso em tempo real (`ScanProgress.tsx`) com pulso e varredura radar.
+- **Mensagens Dinâmicas Sem Porcentagem Falsa**: Indicadores indeterminados de atividade alternando mensagens reais do processo.
+- **Cronômetro Preciso de Execução**: Baseado em `start_time` (quando o Nmap inicia) e `end_time` (quando o Nmap termina), desconsiderando o tempo em fila.
+- **Fila Determinística de Scans**: Suporte a até 2 exoluções simultâneas (`MAX_CONCURRENT_SCANS = 2`), iniciando novos jobs automaticamente assim que vagas são liberadas.
+- **Estados de Execução Reais**:
+  - `queued`: Preparando auditoria / aguardando vaga na fila.
+  - `running`: Scanner ativo com Nmap em execução.
+  - `completed`: Auditoria finalizada e dados processados.
+  - `failed`: Falha na execução técnica do comando.
+  - `cancelled`: Processo encerrado a pedido do usuário.
+- **Cancelamento Real**: Envio de sinal `SIGKILL` ao processo filho Nmap com liberação imediata da vaga na fila.
+- **Descoberta Dinâmica da Rede Local**: Detecção automática de IPv4, interface, gateway padrão e CIDR real (`192.168.0.0/24`, `10.0.0.0/24`, `172.16.0.0/16`, etc.) sem suposições rígidas.
+- **Probe Web Pós-Processamento (`webProbe.ts`)**: Identifica e testa automaticamente portas HTTP/HTTPS abertas uma única vez ao término da auditoria.
+- **Execução Segura Nmap**: Utilização de `spawn()` com argumentos estruturados em array para prevenir Injeção de Comandos Shell.
+- **Persistência Local e Histórico**: Armazenamento com fila de escrita atômica para integridade do banco JSON.
 
-------------------------------------------------------------------------
+---
 
-## 🧱 Arquitetura
+## 🧱 Arquitetura e Fluxo de Dados
 
-O fluxo principal da aplicação é:
-
-``` text
-Navegador
+```text
+Navegador (React SPA)
    │
    ▼
-Frontend React
+API Express (server.ts)
    │
    ▼
-API Express
+Gerenciador de Fila / Jobs (scanner.ts)
    │
    ▼
-Gerenciador de Jobs
+Processo Nmap (spawn)
    │
-   ▼
-Nmap
-   │
-   ├── stdout
-   ├── stderr
-   └── XML
-        │
-        ▼
-     Parser
-        │
-        ▼
-Dados estruturados
-        │
-        ▼
-LowDB / data/db.json
-        │
-        ▼
-Histórico / Resultados / Dashboard
+   ├── stdout (XML) ──► Parser (parser.ts)
+   └── stderr      ──► Registro de Erro
+         │
+         ▼
+Probe Web (webProbe.ts) [Pós-processamento único para portas HTTP/S]
+         │
+         ▼
+Persistência (data/db.json)
 ```
 
-### Tecnologias
+---
 
--   Node.js
--   TypeScript
--   Express
--   React
--   Vite
--   Tailwind CSS
--   LowDB
--   Nmap
+## 📁 Estrutura do Projeto
 
-------------------------------------------------------------------------
-
-## 📁 Estrutura do projeto
-
-``` text
+```text
 ultra-nmap-pro/
-├── ultra.sh
 ├── package.json
+├── tsconfig.json
 ├── server.ts
 ├── data/
 │   └── db.json
@@ -106,388 +70,67 @@ ultra-nmap-pro/
 │   │   └── db.ts
 │   ├── scanner/
 │   │   ├── scanner.ts
-│   │   └── parser.ts
+│   │   ├── parser.ts
+│   │   └── webProbe.ts
 │   └── components/
 │       ├── Dashboard.tsx
 │       ├── Scanner.tsx
 │       ├── Executions.tsx
 │       ├── History.tsx
 │       ├── ScanDetails.tsx
+│       ├── ScanProgress.tsx
+│       ├── NetworkDiscovery.tsx
 │       ├── Logs.tsx
 │       └── Navigation.tsx
-└── ...
+└── README.md
 ```
 
-------------------------------------------------------------------------
+---
 
-## ⚙️ Requisitos
+## 🔍 Perfis de Auditoria Nmap
 
-Antes de executar, o ambiente precisa possuir:
+O backend disponibiliza perfis com argumentos estruturados e seguros:
 
--   Node.js
--   npm
--   Nmap
--   Termux, caso esteja executando no Android
+| Perfil | Comando Nmap Equivalente | Descrição |
+|---|---|---|
+| `discovery` | `nmap -sn <alvo> -oX -` | Descoberta de hosts ativos via ARP/ICMP/Ping. |
+| `fast` | `nmap -Pn -F <alvo> -oX -` | Verificação rápida das 100 portas mais críticas. |
+| `common` | `nmap -Pn --top-ports 100 <alvo> -oX -` | Análise das 100 principais portas TCP. |
+| `top1000` | `nmap -Pn --top-ports 1000 <alvo> -oX -` | Varredura das 1000 portas TCP mais frequentes. |
+| `all` | `nmap -Pn -p- <alvo> -oX -` | Análise completa das 65.535 portas TCP. |
+| `services` | `nmap -Pn -sV <alvo> -oX -` | Detecção de versões exatas dos serviços. |
+| `web` | `nmap -Pn -p 80,443,8080... -sV <alvo> -oX -` | Focado em servidores web e portas HTTP/S. |
+| `os` | `nmap -Pn -O <alvo> -oX -` | Detecção de Sistema Operacional. |
+| `udp` | `nmap -Pn -sU -p 53,123,161... <alvo> -oX -` | Varredura em portas UDP essenciais. |
 
-Verifique:
+---
 
-``` bash
-node --version
-npm --version
-nmap --version
-```
+## 🚀 Como Executar
 
-O script `ultra.sh` também realiza a verificação das dependências
-necessárias.
+### 1. Requisitos
+- **Node.js**: v18 ou superior
+- **Nmap**: Instalado e acessível no PATH do sistema (`pkg install nmap` no Termux)
 
-------------------------------------------------------------------------
+### 2. Instalação e Execução
 
-## 🚀 Instalação
-
-Entre na pasta do projeto:
-
-``` bash
-cd ~/ultra-nmap-pro
-```
-
-Instale as dependências:
-
-``` bash
+```bash
+# Instalar dependências
 npm install
-```
 
-Gere o build de produção:
+# Iniciar servidor em modo de desenvolvimento
+npm run dev
 
-``` bash
+# Ou gerar build e iniciar modo produção
 npm run build
+npm start
 ```
 
-------------------------------------------------------------------------
+O servidor estará disponível em: `http://localhost:3000` ou no IP local detectado.
 
-## ▶️ Executando
+---
 
-A forma recomendada é utilizar:
+## 🛑 Garantias de Qualidade e Segurança
 
-npx tsx server.ts
-
-
-rm -rf node_modules package-lock.json
-npm install --legacy-peer-deps
-
-------------------------------------------------------------------------
-
-## 🔎 Primeiro scan
-
-1.  Abra o painel no navegador.
-2.  Entre em **Scanner**.
-3.  Escolha o tipo de auditoria.
-4.  Informe o alvo autorizado.
-5.  Inicie a auditoria.
-6.  Acompanhe o job em **Execuções**.
-7.  Aguarde a conclusão.
-8.  Abra o resultado.
-9.  Consulte as portas e serviços encontrados.
-10. Se necessário, expanda a saída técnica do Nmap.
-
-Exemplo para ambiente local:
-
-``` text
-127.0.0.1
-```
-
-------------------------------------------------------------------------
-
-## 🔍 Tipos de auditoria
-
-A interface disponibiliza os perfis de scan implementados pelo backend.
-
-### Scan Rápido
-
-Voltado para uma descoberta rápida de portas e serviços.
-
-### Portas Comuns
-
-Analisa as portas mais utilizadas.
-
-### Todas as Portas
-
-Executa uma análise TCP mais abrangente e pode levar mais tempo.
-
-Os argumentos efetivamente utilizados são definidos pelo backend e
-enviados ao Nmap como argumentos estruturados.
-
-------------------------------------------------------------------------
-
-## 🧠 Resultados
-
-Após uma auditoria concluída, o Ultra Nmap Pro apresenta:
-
--   alvo;
--   estado da auditoria;
--   informações de execução;
--   portas encontradas;
--   protocolo;
--   estado da porta;
--   serviço identificado;
--   versão quando disponível;
--   interpretação simplificada;
--   saída técnica original.
-
-A interpretação humana é baseada nos dados retornados pelo Nmap.
-
-Uma porta aberta, por si só, não é tratada automaticamente como uma
-vulnerabilidade.
-
-------------------------------------------------------------------------
-
-## 🛑 Cancelamento
-
-Auditorias em execução podem ser canceladas pela interface.
-
-O backend mantém o controle do processo e envia um sinal de término ao
-processo Nmap associado ao job.
-
-O estado da auditoria é atualizado para:
-
-``` text
-cancelled
-```
-
-quando o cancelamento é processado.
-
-------------------------------------------------------------------------
-
-## 📊 Histórico
-
-O histórico armazena as auditorias realizadas e permite consultar
-resultados anteriores.
-
-A interface permite:
-
--   visualizar auditorias;
--   pesquisar;
--   filtrar;
--   abrir detalhes;
--   consultar resultados persistidos.
-
-O projeto utiliza um limite de histórico para evitar crescimento
-indefinido do arquivo JSON.
-
-------------------------------------------------------------------------
-
-## 📝 Logs
-
-A seção de Logs apresenta eventos registrados pelo sistema.
-
-Ela é separada da saída técnica do Nmap.
-
-Isso permite diferenciar:
-
-``` text
-Logs do sistema
-```
-
-de:
-
-``` text
-Saída técnica do Nmap
-```
-
-------------------------------------------------------------------------
-
-## 💾 Persistência
-
-Os dados são armazenados localmente em:
-
-``` text
-data/db.json
-```
-
-O projeto utiliza LowDB/JSON para evitar dependências nativas adicionais
-e manter uma instalação simples em ambientes como Termux.
-
-A camada de persistência possui uma fila de escrita para organizar
-gravações e reduzir riscos de corrupção quando múltiplas operações
-tentam atualizar os dados.
-
-------------------------------------------------------------------------
-
-## 🔐 Segurança
-
-O Ultra Nmap Pro foi projetado para execução local.
-
-Por padrão, o servidor utiliza:
-
-``` text
-127.0.0.1
-```
-
-A execução do Nmap utiliza argumentos estruturados em vez de montar
-comandos shell diretamente com a entrada do usuário.
-
-Isso reduz o risco de command injection.
-
-### Boas práticas
-
--   Não execute scans contra sistemas sem autorização.
--   Não coloque comandos shell no campo de alvo.
--   Não exponha o servidor para a rede sem entender as implicações de
-    segurança.
--   Use apenas alvos que você controla ou para os quais possui
-    autorização explícita.
-
-------------------------------------------------------------------------
-
-## 🧪 Testes
-
-O projeto foi validado em relação aos principais fluxos:
-
--   inicialização;
--   detecção de Node.js;
--   detecção de npm;
--   detecção do Nmap;
--   execução de auditoria;
--   criação de jobs;
--   acompanhamento de estados;
--   cancelamento;
--   parser XML;
--   persistência;
--   histórico;
--   logs;
--   interface responsiva;
--   build de produção.
-
-Para gerar o build:
-
-``` bash
-npm run build
-```
-
-------------------------------------------------------------------------
-
-## 📱 Uso no Termux
-
-Exemplo de fluxo:
-
-``` bash
-cd ~/ultra-nmap-pro
-chmod +x ultra.sh
-./ultra.sh
-```
-
-Depois:
-
-``` text
-http://127.0.0.1:8080
-```
-
-O painel pode ser acessado pelo navegador do próprio dispositivo.
-
-------------------------------------------------------------------------
-
-## 🛠️ Solução de problemas
-
-### Nmap não encontrado
-
-Verifique:
-
-``` bash
-nmap --version
-```
-
-Se o comando não existir, instale o Nmap no ambiente Termux antes de
-iniciar o projeto.
-
-### Node.js não encontrado
-
-Verifique:
-
-``` bash
-node --version
-```
-
-### npm não encontrado
-
-Verifique:
-
-``` bash
-npm --version
-```
-
-### Porta 8080 ocupada
-
-Verifique qual processo está utilizando a porta antes de iniciar outra
-instância do servidor.
-
-### Interface não abre
-
-Confirme se o servidor está em execução e tente:
-
-``` text
-http://127.0.0.1:8080
-```
-
-Também verifique os logs exibidos no terminal.
-
-------------------------------------------------------------------------
-
-## ⚠️ Limitações conhecidas
-
-O banco é baseado em JSON/LowDB. A solução é adequada para uso local e
-individual, mas não foi projetada para alta concorrência com muitos
-usuários ou vários processos independentes escrevendo simultaneamente no
-mesmo arquivo.
-
-O histórico possui limite para evitar crescimento indefinido do arquivo.
-
-O tempo de determinados scans pode variar conforme o alvo, rede e opções
-utilizadas.
-
-------------------------------------------------------------------------
-
-## 📌 Status
-
-**Status atual: pronto para teste/uso local no Termux.**
-
-O projeto possui:
-
--   backend funcional;
--   scanner Nmap real;
--   parser estruturado;
--   persistência;
--   histórico;
--   logs;
--   gerenciamento de jobs;
--   cancelamento;
--   interface mobile-first.
-
-------------------------------------------------------------------------
-
-## ⚖️ Uso responsável
-
-Este projeto é uma interface para ferramentas de análise de rede.
-
-Use-o somente para:
-
--   seus próprios dispositivos;
--   ambientes de laboratório;
--   redes sob sua administração;
--   sistemas em que você tenha autorização para realizar auditorias.
-
-O fato de uma ferramenta conseguir analisar um alvo não significa que
-você tenha autorização para fazê-lo.
-
-------------------------------------------------------------------------
-
-## 📄 Licença
-
-Defina aqui a licença do projeto caso ele seja publicado no GitHub.
-
-Exemplos:
-
-``` text
-MIT
-```
-
-ou outra licença compatível com os componentes e dependências
-utilizadas.
+- **Zero Injeção de Shell**: Parâmetros de alvo passam por validação Regex estrita de IPv4/CIDR/Hostname e são repassados de forma isolada ao `spawn()`.
+- **Sem Mocks no Scanner**: Resultados e estados refletem fielmente a execução do binário Nmap no sistema operacional.
+- **Probe Web Eficiente**: Requisições de probe HTTP/HTTPS são disparadas **apenas uma vez** após a conclusão do scan, evitando flood ou requisições desnecessárias a cada polling da API.

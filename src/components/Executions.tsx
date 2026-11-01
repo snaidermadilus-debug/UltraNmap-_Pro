@@ -1,8 +1,32 @@
 import { useEffect, useState } from 'react';
-import { Activity, Play, CheckCircle2, XCircle, Clock, AlertCircle, RefreshCw, StopCircle } from 'lucide-react';
+import { Activity, Play, CheckCircle2, XCircle, Clock, AlertCircle, RefreshCw, StopCircle, Zap } from 'lucide-react';
 
 interface ExecutionsProps {
   onSelect: (id: string) => void;
+}
+
+function Timer({ startTime, status }: { startTime: string, status: string }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (status !== 'running') return;
+    
+    const start = new Date(startTime).getTime();
+    const update = () => setElapsed(Math.floor((Date.now() - start) / 1000));
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [startTime, status]);
+
+  if (status !== 'running') return null;
+
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  return (
+    <span className="font-mono text-blue-400 font-bold">
+      {mins.toString().padStart(2, '0')}:{secs.toString().padStart(2, '0')}
+    </span>
+  );
 }
 
 export default function Executions({ onSelect }: ExecutionsProps) {
@@ -46,22 +70,23 @@ export default function Executions({ onSelect }: ExecutionsProps) {
           <h2 className="text-2xl font-bold flex items-center gap-2">
             <Activity className="text-blue-500" /> Execuções & Jobs
           </h2>
-          <p className="text-xs text-gray-400 mt-1">
-            Acompanhe o progresso e estado em tempo real das auditorias ativas e anteriores.
+          <p className="text-xs text-gray-400 mt-1 font-medium tracking-tight">
+            Acompanhe o progresso em tempo real das auditorias ativas.
           </p>
         </div>
 
-        <button onClick={fetchJobs} className="p-2 bg-gray-900 border border-gray-800 rounded-lg text-gray-400 hover:text-white">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+        <button onClick={fetchJobs} className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-gray-400 hover:text-white transition-colors">
+          <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
         </button>
       </div>
 
       {jobs.length === 0 ? (
-        <div className="bg-gray-900 p-8 rounded-xl border border-gray-800 text-center text-gray-400 text-sm">
-          Nenhuma auditoria foi registrada ainda. Inicie um scan na aba Scanner.
+        <div className="bg-gray-900 p-12 rounded-3xl border border-gray-800 text-center text-gray-500 space-y-3">
+          <Zap size={32} className="mx-auto text-gray-800" />
+          <p className="text-sm font-medium">Nenhuma auditoria registrada ainda.</p>
         </div>
       ) : (
-        <div className="grid gap-3">
+        <div className="grid gap-4">
           {jobs.map((job: any) => {
             const isRunning = job.status === 'running';
             const isCompleted = job.status === 'completed';
@@ -73,51 +98,58 @@ export default function Executions({ onSelect }: ExecutionsProps) {
               <div
                 key={job.id}
                 onClick={() => onSelect(job.id)}
-                className="bg-gray-900 hover:bg-gray-850 p-4 rounded-xl border border-gray-800 hover:border-gray-700 transition-all cursor-pointer space-y-3"
+                className={`p-5 rounded-3xl border transition-all cursor-pointer space-y-4 group ${
+                  isRunning 
+                    ? 'bg-blue-950/20 border-blue-500/30 shadow-lg shadow-blue-900/10' 
+                    : 'bg-gray-900 border-gray-800 hover:border-gray-700'
+                }`}
               >
                 <div className="flex justify-between items-start">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-lg text-white">{job.target}</span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-gray-800 text-gray-300 uppercase border border-gray-700">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-bold text-lg text-white tracking-tight">{job.target}</span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-800 text-gray-300 uppercase border border-gray-700">
                         {job.type}
                       </span>
                     </div>
-                    <span className="text-xs text-gray-400 block mt-0.5 font-mono">
-                      Iniciado às {new Date(job.start_time).toLocaleTimeString()}
-                    </span>
+                    <div className="flex items-center gap-2 text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                      <Clock size={10} />
+                      {new Date(job.start_time).toLocaleTimeString()}
+                      {isRunning && (
+                         <>
+                           <span className="text-gray-700">•</span>
+                           <Timer startTime={job.start_time} status={job.status} />
+                         </>
+                      )}
+                    </div>
                   </div>
 
                   <span
-                    className={`px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1.5 border ${
+                    className={`px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest flex items-center gap-1.5 border transition-all ${
                       isCompleted
-                        ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                        ? 'bg-emerald-950 text-emerald-300 border-emerald-800/50'
                         : isRunning
-                        ? 'bg-blue-950 text-blue-300 border-blue-800 animate-pulse'
+                        ? 'bg-blue-500 text-white border-blue-400 shadow-md animate-pulse'
                         : isQueued
-                        ? 'bg-amber-950 text-amber-300 border-amber-800'
-                        : 'bg-red-950 text-red-300 border-red-800'
+                        ? 'bg-amber-950 text-amber-300 border-amber-800/50'
+                        : 'bg-red-950 text-red-300 border-red-800/50'
                     }`}
                   >
-                    {isCompleted && <CheckCircle2 size={13} />}
-                    {isRunning && <RefreshCw size={13} className="animate-spin" />}
-                    {isQueued && <Clock size={13} />}
-                    {(isFailed || isCancelled) && <XCircle size={13} />}
-                    {job.status.toUpperCase()}
+                    {isRunning ? 'EXECUTANDO' : job.status.toUpperCase()}
                   </span>
                 </div>
 
-                <div className="flex justify-between items-center pt-2 border-t border-gray-800/80">
-                  <span className="text-xs text-blue-400 font-bold hover:underline">
-                    VER DIAGNÓSTICO →
+                <div className="flex justify-between items-center pt-3 border-t border-gray-800/50">
+                  <span className="text-[11px] text-blue-400 font-bold group-hover:text-blue-300 transition-colors uppercase tracking-widest flex items-center gap-1">
+                    Ver Diagnóstico <Zap size={10} fill="currentColor" />
                   </span>
 
                   {isRunning && (
                     <button
                       onClick={(e) => handleCancel(job.id, e)}
-                      className="bg-red-950/90 hover:bg-red-900 text-red-300 border border-red-800 px-3 py-1 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors"
+                      className="bg-red-950/90 hover:bg-red-900 text-red-300 border border-red-800/50 px-3 py-1.5 rounded-xl text-[10px] font-black tracking-widest flex items-center gap-1.5 transition-colors uppercase"
                     >
-                      <StopCircle size={13} /> Cancelar Job
+                      <StopCircle size={12} /> Cancelar
                     </button>
                   )}
                 </div>

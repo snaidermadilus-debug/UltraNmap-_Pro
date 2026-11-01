@@ -1,5 +1,7 @@
 import { spawn, execSync, ChildProcess } from 'child_process';
 import { readDb, writeDb } from '../db/db.js';
+import { parseNmapXML } from './parser.js';
+import { probeWeb } from './webProbe.js';
 
 const activeProcesses = new Map<string, ChildProcess>();
 const MAX_CONCURRENT_SCANS = 2;
@@ -54,11 +56,18 @@ export function buildNmapArgs(type: string, target: string): string[] {
 
 export async function processQueue() {
   const db = await readDb();
-  const runningJobs = db.jobs.filter((j: any) => j.status === 'running');
-  if (runningJobs.length >= MAX_CONCURRENT_SCANS) return;
+  let runningJobs = db.jobs.filter((j: any) => j.status === 'running');
 
-  const queuedJob = db.jobs.find((j: any) => j.status === 'queued');
-  if (queuedJob) {
+  while (runningJobs.length < MAX_CONCURRENT_SCANS) {
+    const queuedJob = db.jobs.find((j: any) => j.status === 'queued');
+    if (!queuedJob) break;
+
+    // Transition state to running & set start_time at launch
+    queuedJob.status = 'running';
+    queuedJob.start_time = new Date().toISOString();
+    await writeDb(db);
+
+    runningJobs.push(queuedJob);
     startJobExecution(queuedJob.id, queuedJob.target, queuedJob.type).catch(console.error);
   }
 }
@@ -95,7 +104,7 @@ async function startJobExecution(jobId: string, target: string, type: string) {
 
   if (!nmapCommand) {
     job.status = 'failed';
-    job.stderr = 'Erro: Binário do Nmap não encontrado no sistema. Instale o nmap (ex: pkg install nmap no Termux).';
+    job.stderr = 'Erro: Binário do Nmap não encontrado no sistema.';
     job.end_time = new Date().toISOString();
     await writeDb(db);
     processQueue();
@@ -108,9 +117,11 @@ async function startJobExecution(jobId: string, target: string, type: string) {
   const nmap = spawn(nmapCommand, args);
   activeProcesses.set(jobId, nmap);
 
-  job.status = 'running';
   job.pid = nmap.pid;
   job.nmapCommand = fullCommand;
+  if (!job.start_time) {
+    job.start_time = new Date().toISOString();
+  }
   await writeDb(db);
 
   let stdout = '';
@@ -127,12 +138,48 @@ async function startJobExecution(jobId: string, target: string, type: string) {
     activeProcesses.delete(jobId);
     const updatedDb = await readDb();
     const currentJob = updatedDb.jobs.find((j: any) => j.id === jobId);
+
+    // Prevent overwriting if already marked as cancelled
     if (currentJob && currentJob.status !== 'cancelled') {
       currentJob.status = code === 0 ? 'completed' : 'failed';
       currentJob.stdout = stdout;
       currentJob.stderr = stderr;
       currentJob.exit_code = code;
       currentJob.end_time = new Date().toISOString();
+
+      // Post-processing Web Probe ONCE upon completion
+      if (code === 0 && stdout) {
+        try {
+          const parsedData = await parseNmapXML(stdout);
+          currentJob.parsedData = parsedData;
+
+          const webResults: any[] = [];
+          if (Array.isArray(parsedData)) {
+            for (const host of parsedData) {
+              for (const portObj of host.ports) {
+                if (portObj.state === 'open') {
+                  const svc = (portObj.service || '').toLowerCase();
+                  const pNum = Number(portObj.port);
+                  const isWebPort = [80, 443, 8080, 8443, 8000, 8888, 3000, 5000].includes(pNum);
+                  const isWebService = svc.includes('http') || svc.includes('ssl') || svc.includes('web');
+
+                  if (isWebService || isWebPort) {
+                    const protocol = (svc.includes('https') || svc.includes('ssl') || pNum === 443 || pNum === 8443) ? 'https' : 'http';
+                    const web = await probeWeb(host.address, portObj.port, protocol);
+                    if (web.confirmed) {
+                      webResults.push(web);
+                    }
+                  }
+                }
+              }
+            }
+          }
+          currentJob.webResults = webResults;
+        } catch (e) {
+          console.error('[PARSER / WEB PROBE POST-PROCESS ERROR]', e);
+        }
+      }
+
       await writeDb(updatedDb);
     }
     processQueue();
@@ -142,10 +189,10 @@ async function startJobExecution(jobId: string, target: string, type: string) {
 export async function cancelScan(jobId: string) {
   const process = activeProcesses.get(jobId);
   if (process) {
+    activeProcesses.delete(jobId);
     try {
       process.kill('SIGKILL');
     } catch (e) {}
-    activeProcesses.delete(jobId);
   }
 
   const db = await readDb();
