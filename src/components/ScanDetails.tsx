@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Shield, ExternalLink, Terminal, CheckCircle2, XCircle, AlertCircle, Clock, Server, Globe, ChevronLeft } from 'lucide-react';
+import { Shield, ExternalLink, Terminal, CheckCircle2, XCircle, AlertCircle, Clock, Server, Globe, ChevronLeft, ChevronRight } from 'lucide-react';
 import ScanProgress from './ScanProgress';
 
 interface ScanDetailsProps {
@@ -12,6 +12,7 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
   const [showTech, setShowTech] = useState(false);
   const [viewMode, setViewMode] = useState<'progress' | 'technical'>('progress');
   const [loading, setLoading] = useState(true);
+  const [expandedPortIndex, setExpandedPortIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let interval: any = null;
@@ -288,14 +289,18 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
       {/* Identified Ports Section */}
       {status === 'completed' && ports.length > 0 && (
         <div className="space-y-2.5 font-mono">
-          <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5">
-            <Server size={14} className="text-emerald-400" /> [ PORTAS ANALISADAS ({ports.length}) ]
-          </h3>
+          <div className="flex justify-between items-center">
+            <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-widest flex items-center gap-1.5">
+              <Server size={14} className="text-emerald-400" /> [ PORTAS ANALISADAS ({ports.length}) ]
+            </h3>
+            <span className="text-[10px] text-zinc-500">TOQUE PARA EXPANDIR</span>
+          </div>
 
-          <div className="grid gap-2.5">
+          <div className="grid gap-1.5">
             {ports.map((p: any, idx: number) => {
               const isOpen = p.state === 'open';
               const isFiltered = p.state === 'filtered';
+              const isExpanded = expandedPortIndex === idx;
               const svcName = (p.service || '').toLowerCase();
               const isWebSvc = isOpen && (svcName.includes('http') || svcName.includes('ssl') || svcName.includes('web'));
               const webUrl = isWebSvc ? `${svcName.includes('https') || svcName.includes('ssl') ? 'https' : 'http'}://${target}:${p.port}` : null;
@@ -303,7 +308,7 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
               return (
                 <div
                   key={idx}
-                  className={`p-3.5 rounded-2xl border transition-all ${
+                  className={`rounded-xl border transition-all ${
                     isOpen
                       ? 'bg-zinc-950 border-emerald-900/60'
                       : isFiltered
@@ -311,47 +316,57 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
                       : 'bg-zinc-950/60 border-zinc-850 opacity-80'
                   }`}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${isOpen ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : isFiltered ? 'bg-amber-500' : 'bg-zinc-600'}`}></span>
-                      <span className="font-bold text-sm text-white">
-                        {p.port} / {p.protocol.toUpperCase()}
-                      </span>
+                  {/* Compact Collapsed Row */}
+                  <div 
+                    onClick={() => setExpandedPortIndex(isExpanded ? null : idx)}
+                    className="p-3 flex items-center justify-between cursor-pointer hover:bg-zinc-900/60 transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5 font-bold text-xs truncate">
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${isOpen ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : isFiltered ? 'bg-amber-500' : 'bg-zinc-600'}`} />
+                      <span className="text-white w-20 font-mono">{p.port} / {p.protocol.toUpperCase()}</span>
+                      <span className="text-emerald-400 uppercase truncate">{p.service || 'UNKNOWN'}</span>
                     </div>
 
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        isOpen
-                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                          : isFiltered
-                          ? 'bg-amber-950 text-amber-300 border border-amber-800'
-                          : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-                      }`}
-                    >
-                      {p.state.toUpperCase()}
-                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                          isOpen
+                            ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                            : isFiltered
+                            ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                            : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
+                        }`}
+                      >
+                        {p.state.toUpperCase()}
+                      </span>
+                      <ChevronRight size={14} className={`text-zinc-500 transition-transform ${isExpanded ? 'rotate-90 text-emerald-400' : ''}`} />
+                    </div>
                   </div>
 
-                  <div className="text-xs text-zinc-300 space-y-0.5">
-                    <p>
-                      Serviço: <span className="font-bold text-emerald-400 uppercase">{p.service}</span>
-                      {p.product && <span className="text-cyan-300 font-normal"> ({p.product} {p.version || ''})</span>}
-                    </p>
-                  </div>
+                  {/* Expanded Port Details */}
+                  {isExpanded && (
+                    <div className="px-3 pb-3 pt-1 border-t border-zinc-800/80 space-y-2 text-xs">
+                      {p.product && (
+                        <p className="text-zinc-300">
+                          Versão/Produto: <span className="text-cyan-300 font-bold">{p.product} {p.version || ''}</span>
+                        </p>
+                      )}
 
-                  <p className="text-xs text-zinc-400 mt-2 bg-zinc-900/80 p-2.5 rounded-xl border border-zinc-800 leading-relaxed font-sans">
-                    {getPortExplanation(p)}
-                  </p>
+                      <p className="text-[11px] text-zinc-400 bg-zinc-900/80 p-2.5 rounded-xl border border-zinc-800 leading-relaxed font-sans">
+                        {getPortExplanation(p)}
+                      </p>
 
-                  {webUrl && (
-                    <a
-                      href={webUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="mt-2.5 w-full bg-emerald-500 hover:bg-emerald-400 text-black font-mono font-bold text-xs p-2 rounded-xl flex items-center justify-center gap-1.5 transition-colors uppercase"
-                    >
-                      <ExternalLink size={12} /> ABRIR NO NAVEGADOR ({webUrl})
-                    </a>
+                      {webUrl && (
+                        <a
+                          href={webUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full bg-emerald-500 hover:bg-emerald-400 text-black font-mono font-bold text-xs p-2 rounded-xl flex items-center justify-center gap-1.5 transition-colors uppercase mt-1"
+                        >
+                          <ExternalLink size={12} /> ABRIR NO NAVEGADOR ({webUrl})
+                        </a>
+                      )}
+                    </div>
                   )}
                 </div>
               );

@@ -39,7 +39,10 @@ export default function App() {
         )}
 
         {activeTab === 'network' && (
-          <NetworkDiscovery onSelectTarget={handleSelectTargetFromNetwork} />
+          <NetworkDiscovery 
+            onSelectTarget={handleSelectTargetFromNetwork} 
+            onSelectJob={handleSelectJob}
+          />
         )}
 
         {activeTab === 'executions' && (
