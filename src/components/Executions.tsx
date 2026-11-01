@@ -5,20 +5,20 @@ interface ExecutionsProps {
   onSelect: (id: string) => void;
 }
 
-function Timer({ startTime, status }: { startTime: string, status: string }) {
+function Timer({ startTime, status }: { startTime: string | null, status: string }) {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    if (status !== 'running') return;
+    if (status !== 'running' || !startTime) return;
     
     const start = new Date(startTime).getTime();
-    const update = () => setElapsed(Math.floor((Date.now() - start) / 1000));
+    const update = () => setElapsed(Math.max(0, Math.floor((Date.now() - start) / 1000)));
     update();
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
   }, [startTime, status]);
 
-  if (status !== 'running') return null;
+  if (status !== 'running' || !startTime) return null;
 
   const mins = Math.floor(elapsed / 60);
   const secs = elapsed % 60;
@@ -27,6 +27,30 @@ function Timer({ startTime, status }: { startTime: string, status: string }) {
       {mins.toString().padStart(2, '0')}:{secs.toString().padStart(2, '0')}
     </span>
   );
+}
+
+function formatDuration(startTime: string | null, endTime: string | null): string | null {
+  if (!startTime || !endTime) return null;
+  const start = new Date(startTime).getTime();
+  const end = new Date(endTime).getTime();
+  const seconds = Math.max(0, Math.floor((end - start) / 1000));
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
+function getDisplayTime(job: any): string {
+  if (job.status === 'queued') {
+    if (job.queued_at) {
+      return `Na fila (${new Date(job.queued_at).toLocaleTimeString()})`;
+    }
+    return 'Na fila...';
+  }
+  
+  const referenceTime = job.start_time || job.queued_at;
+  if (!referenceTime) return 'Horário N/A';
+  
+  return new Date(referenceTime).toLocaleTimeString();
 }
 
 export default function Executions({ onSelect }: ExecutionsProps) {
@@ -93,6 +117,7 @@ export default function Executions({ onSelect }: ExecutionsProps) {
             const isQueued = job.status === 'queued';
             const isFailed = job.status === 'failed';
             const isCancelled = job.status === 'cancelled';
+            const durationStr = formatDuration(job.start_time, job.end_time);
 
             return (
               <div
@@ -112,13 +137,23 @@ export default function Executions({ onSelect }: ExecutionsProps) {
                         {job.type}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                    <div className="flex items-center gap-2 text-[10px] text-gray-500 font-bold uppercase tracking-wider flex-wrap">
                       <Clock size={10} />
-                      {new Date(job.start_time).toLocaleTimeString()}
+                      {getDisplayTime(job)}
+
                       {isRunning && (
                          <>
                            <span className="text-gray-700">•</span>
                            <Timer startTime={job.start_time} status={job.status} />
+                         </>
+                      )}
+
+                      {(isCompleted || isFailed || isCancelled) && durationStr && (
+                         <>
+                           <span className="text-gray-700">•</span>
+                           <span className="font-mono text-gray-400 font-bold">
+                             Duração: {durationStr}
+                           </span>
                          </>
                       )}
                     </div>
@@ -135,7 +170,7 @@ export default function Executions({ onSelect }: ExecutionsProps) {
                         : 'bg-red-950 text-red-300 border-red-800/50'
                     }`}
                   >
-                    {isRunning ? 'EXECUTANDO' : job.status.toUpperCase()}
+                    {isRunning ? 'EXECUTANDO' : isQueued ? 'NA FILA' : job.status.toUpperCase()}
                   </span>
                 </div>
 

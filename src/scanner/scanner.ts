@@ -5,6 +5,7 @@ import { probeWeb } from './webProbe.js';
 
 const activeProcesses = new Map<string, ChildProcess>();
 const MAX_CONCURRENT_SCANS = 2;
+let isQueueProcessing = false;
 
 export function validateTarget(target: string): boolean {
   if (!target || typeof target !== 'string') return false;
@@ -55,20 +56,42 @@ export function buildNmapArgs(type: string, target: string): string[] {
 }
 
 export async function processQueue() {
-  const db = await readDb();
-  let runningJobs = db.jobs.filter((j: any) => j.status === 'running');
+  // Lock to prevent concurrent execution of processQueue from picking the same job
+  if (isQueueProcessing) return;
+  isQueueProcessing = true;
 
-  while (runningJobs.length < MAX_CONCURRENT_SCANS) {
-    const queuedJob = db.jobs.find((j: any) => j.status === 'queued');
-    if (!queuedJob) break;
+  try {
+    const db = await readDb();
+    let runningJobs = db.jobs.filter((j: any) => j.status === 'running');
 
-    // Transition state to running & set start_time at launch
-    queuedJob.status = 'running';
-    queuedJob.start_time = new Date().toISOString();
-    await writeDb(db);
+    while (runningJobs.length < MAX_CONCURRENT_SCANS) {
+      // Find queued jobs sorted FIFO by queued_at / start_time
+      const queuedJobs = db.jobs
+        .filter((j: any) => j.status === 'queued')
+        .sort((a: any, b: any) => {
+          const tA = new Date(a.queued_at || a.start_time || 0).getTime();
+          const tB = new Date(b.queued_at || b.start_time || 0).getTime();
+          return tA - tB;
+        });
 
-    runningJobs.push(queuedJob);
-    startJobExecution(queuedJob.id, queuedJob.target, queuedJob.type).catch(console.error);
+      if (queuedJobs.length === 0) break;
+      const queuedJob = queuedJobs[0];
+
+      // Safety check: skip if process already active
+      if (activeProcesses.has(queuedJob.id)) {
+        break;
+      }
+
+      // Transition state to running & set start_time at launch
+      queuedJob.status = 'running';
+      queuedJob.start_time = new Date().toISOString();
+      await writeDb(db);
+
+      runningJobs.push(queuedJob);
+      startJobExecution(queuedJob.id, queuedJob.target, queuedJob.type).catch(console.error);
+    }
+  } finally {
+    isQueueProcessing = false;
   }
 }
 
@@ -89,6 +112,10 @@ export async function runScan(jobId: string, target: string, type: string) {
 }
 
 async function startJobExecution(jobId: string, target: string, type: string) {
+  if (activeProcesses.has(jobId)) {
+    return;
+  }
+
   const db = await readDb();
   const job = db.jobs.find((j: any) => j.id === jobId);
   if (!job) return;

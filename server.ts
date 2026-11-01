@@ -15,6 +15,17 @@ function netmaskToPrefix(netmask: string): number {
     .reduce((acc, curr) => acc + curr, 0);
 }
 
+function prefixToNetmask(prefix: number): string {
+  if (prefix < 0 || prefix > 32) return '255.255.255.0';
+  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  return [
+    (mask >>> 24) & 0xff,
+    (mask >>> 16) & 0xff,
+    (mask >>> 8) & 0xff,
+    mask & 0xff
+  ].join('.');
+}
+
 function calculateCidr(ip: string, prefixOrNetmask: string | number): string | null {
   if (!ip || ip === '127.0.0.1') return null;
   const parts = ip.split('.').map(Number);
@@ -50,34 +61,58 @@ export function getLocalNetworkInfo() {
   let gateway: string | null = null;
   let netmask: string | null = null;
 
-  // 1. Try ip -j addr and ip -j route
   try {
-    const addrOutput = execSync('ip -j addr show').toString();
-    const routeOutput = execSync('ip -j route show default').toString();
-    const addrJson = JSON.parse(addrOutput);
-    const routeJson = JSON.parse(routeOutput);
+    let routeJson: any = null;
+    try {
+      const routeOutput = execSync('ip -j route show default').toString();
+      routeJson = JSON.parse(routeOutput);
+    } catch (e) {}
 
-    for (const iface of addrJson) {
-      if (iface.ifname !== 'lo' && iface.addr_info) {
-        const v4 = iface.addr_info.find((a: any) => a.family === 'inet');
-        if (v4 && v4.local && !v4.local.startsWith('127.')) {
-          ip = v4.local;
-          interfaceName = iface.ifname;
-          const prefix = v4.prefixlen ?? 24;
-          if (ip) cidr = calculateCidr(ip, prefix);
-          break;
-        }
+    const defaultIfaceName = routeJson?.[0]?.dev || null;
+    if (routeJson?.[0]?.gateway) {
+      gateway = routeJson[0].gateway;
+    }
+
+    const addrOutput = execSync('ip -j addr show').toString();
+    const addrJson = JSON.parse(addrOutput);
+
+    // Prioritize default route interface
+    const targetIface = defaultIfaceName 
+      ? addrJson.find((i: any) => i.ifname === defaultIfaceName)
+      : null;
+
+    if (targetIface && targetIface.addr_info) {
+      const v4 = targetIface.addr_info.find((a: any) => a.family === 'inet' && !a.local.startsWith('127.'));
+      if (v4 && v4.local) {
+        ip = v4.local;
+        interfaceName = targetIface.ifname;
+        const prefix = v4.prefixlen ?? 24;
+        netmask = prefixToNetmask(prefix);
+        if (ip) cidr = calculateCidr(ip, prefix);
       }
     }
 
-    if (routeJson && Array.isArray(routeJson) && routeJson[0] && routeJson[0].gateway) {
-      gateway = routeJson[0].gateway;
+    // Fallback if targetIface did not yield an IP
+    if (!ip) {
+      for (const iface of addrJson) {
+        if (iface.ifname !== 'lo' && iface.addr_info) {
+          const v4 = iface.addr_info.find((a: any) => a.family === 'inet' && !a.local.startsWith('127.'));
+          if (v4 && v4.local) {
+            ip = v4.local;
+            interfaceName = iface.ifname;
+            const prefix = v4.prefixlen ?? 24;
+            netmask = prefixToNetmask(prefix);
+            if (ip) cidr = calculateCidr(ip, prefix);
+            break;
+          }
+        }
+      }
     }
   } catch (e) {
-    // Command ip not available or failed
+    // ip command not available
   }
 
-  // 2. Fallback to os.networkInterfaces()
+  // OS networkInterfaces fallback
   if (!ip) {
     try {
       const interfaces = os.networkInterfaces();
@@ -126,13 +161,31 @@ export async function startServer() {
   app.use(express.static('dist'));
 
   app.get('/api/status', (req, res) => {
-    res.json({ success: true, data: { nmap: 'online', server: 'online' } });
+    let nmapStatus = 'offline';
+    let nmapVersion = 'Não instalado';
+
+    try {
+      const versionOutput = execSync('nmap --version').toString();
+      nmapStatus = 'online';
+      nmapVersion = versionOutput.split('\n')[0].trim();
+    } catch (e) {}
+
+    res.json({
+      success: true,
+      data: {
+        nmap: nmapStatus,
+        server: 'online',
+        nmapVersion
+      }
+    });
   });
 
   app.get('/api/system/environment', (req, res) => {
     let nmapVersion = 'Não instalado';
+    let nmapInstalled = false;
     try {
-      nmapVersion = execSync('nmap --version').toString().split('\n')[0];
+      nmapVersion = execSync('nmap --version').toString().split('\n')[0].trim();
+      nmapInstalled = true;
     } catch (e) {}
 
     const netInfo = getLocalNetworkInfo();
@@ -143,7 +196,7 @@ export async function startServer() {
         platform: process.platform,
         hostname: os.hostname(),
         nodeVersion: process.version,
-        nmapInstalled: nmapVersion !== 'Não instalado',
+        nmapInstalled,
         nmapVersion,
         localNetwork: netInfo,
         executionMode: 'local'
@@ -162,9 +215,20 @@ export async function startServer() {
 
   app.post('/api/network/scan', async (req, res) => {
     const netInfo = getLocalNetworkInfo();
-    const targetCidr = (req.body && req.body.cidr) ? req.body.cidr.trim() : (netInfo.cidr !== 'não detectado' ? netInfo.cidr : '127.0.0.1/32');
-    const id = crypto.randomUUID();
+    let targetCidr = (req.body && req.body.cidr) ? req.body.cidr.trim() : null;
 
+    if (!targetCidr && netInfo.cidr !== 'não detectado') {
+      targetCidr = netInfo.cidr;
+    }
+
+    if (!targetCidr || targetCidr === 'não detectado') {
+      return res.status(400).json({
+        success: false,
+        error: 'Rede local não detectada. Por favor, informe um CIDR manualmente (ex: 192.168.1.0/24).'
+      });
+    }
+
+    const id = crypto.randomUUID();
     const db = await readDb();
     db.jobs.push({
       id,
