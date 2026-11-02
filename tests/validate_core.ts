@@ -30,6 +30,10 @@ async function validate() {
     const { probeWeb } = await import('../src/scanner/webProbe.js');
     const { getLocalNetworkInfo } = await import('../server.js');
     const { isVulnerableOutput, resolveOutputPath } = await import('../src/scanner/utils.js');
+    const { runParserTest } = await import('../test_parser.js');
+
+    // Run standalone test_parser asserts
+    await runParserTest();
 
     // 1. Target Validation Tests
     console.log("\n1. Validando alvos:");
@@ -68,37 +72,67 @@ async function validate() {
     assert(nonRootStealthArgs.includes('-sT') && !nonRootStealthArgs.includes('-sS'), "Stealth sem root deve trocar -sS por -sT");
     delete process.env.FORCE_NON_ROOT;
 
-    // 5. XML Parser Validation with NSE & OS
-    console.log("\n5. Validando XML Parser (Script NSE & OS):");
-    const mockXML = `<?xml version="1.0" encoding="UTF-8"?>
-    <nmaprun scanner="nmap" args="nmap -Pn -F -oX - 192.168.1.8">
-      <host>
-        <status state="up" reason="localhost-response"/>
-        <address addr="192.168.1.8" addrtype="ipv4"/>
-        <address addr="AC:67:B2:11:22:33" addrtype="mac" vendor="Espressif Inc."/>
-        <os>
-          <osmatch name="Linux 5.4" accuracy="98"/>
-        </os>
-        <ports>
-          <port protocol="tcp" portid="80">
-            <state state="open" reason="syn-ack"/>
-            <service name="http" product="ESP32 Web Server" version="1.0"/>
-            <script id="http-title" output="ESP32 Home Automation"/>
-          </port>
-          <port protocol="tcp" portid="22">
-            <state state="open" reason="syn-ack"/>
-            <service name="ssh" product="OpenSSH" version="8.2p1"/>
-            <script id="sshv1" output="VULNERABLE: Server supports SSHv1 protocol"/>
-          </port>
-        </ports>
-      </host>
-    </nmaprun>`;
+    // 5. XML Parser Validation (16 Scenarios)
+    console.log("\n5. Validando XML Parser (16 Cenários do Nmap):");
 
-    const hosts = await parseNmapXML(mockXML);
-    const parsedHost = hosts[0];
-    assert(parsedHost?.address === '192.168.1.8', "Endereço parseado corretamente");
-    assert(parsedHost?.osMatches?.[0]?.name === 'Linux 5.4' && parsedHost?.osMatches?.[0]?.accuracy === '98', "OS Match parseado com acurácia");
-    assert(parsedHost?.ports?.[0]?.scripts?.length === 1, "Script NSE do serviço parseado com sucesso");
+    // Scenario 1, 3, 5, 9: 1 Host, 1 Port, IPv4, Service/Product/Version
+    const xmlSingleHostSinglePort = `<nmaprun><host><status state="up"/><address addr="10.0.0.1" addrtype="ipv4"/><ports><port protocol="tcp" portid="80"><state state="open"/><service name="http" product="nginx" version="1.18.0" extrainfo="Ubuntu"/></port></ports></host></nmaprun>`;
+    const res1 = await parseNmapXML(xmlSingleHostSinglePort);
+    assert(res1.length === 1 && res1[0].address === '10.0.0.1' && res1[0].ports[0].product === 'nginx', "1/3/5/9. XML com 1 host, 1 porta, IPv4, service/product/version");
+
+    // Scenario 2 & 4: Multiple Hosts & Multiple Ports
+    const xmlMultiHostMultiPort = `<nmaprun>
+      <host><status state="up"/><address addr="10.0.0.1" addrtype="ipv4"/><ports><port protocol="tcp" portid="80"><state state="open"/></port><port protocol="tcp" portid="443"><state state="open"/></port></ports></host>
+      <host><status state="up"/><address addr="10.0.0.2" addrtype="ipv4"/><ports><port protocol="tcp" portid="22"><state state="open"/></port></ports></host>
+    </nmaprun>`;
+    const res2 = await parseNmapXML(xmlMultiHostMultiPort);
+    assert(res2.length === 2 && res2[0].ports.length === 2 && res2[1].ports.length === 1, "2/4. XML com vários hosts e várias portas");
+
+    // Scenario 6: IPv6
+    const xmlIPv6 = `<nmaprun><host><status state="up"/><address addr="fe80::1" addrtype="ipv6"/><ports><port protocol="tcp" portid="80"><state state="open"/></port></ports></host></nmaprun>`;
+    const res6 = await parseNmapXML(xmlIPv6);
+    assert(res6[0]?.address === 'fe80::1', "6. Host com IPv6");
+
+    // Scenario 7: MAC & Vendor
+    const xmlMAC = `<nmaprun><host><status state="up"/><address addr="192.168.1.15" addrtype="ipv4"/><address addr="00:11:22:33:44:55" addrtype="mac" vendor="Apple Inc."/><ports><port protocol="tcp" portid="80"><state state="open"/></port></ports></host></nmaprun>`;
+    const res7 = await parseNmapXML(xmlMAC);
+    assert(res7[0]?.mac === '00:11:22:33:44:55' && res7[0]?.vendor === 'Apple Inc.', "7. Host com MAC e Vendor");
+
+    // Scenario 8: Hostname
+    const xmlHostname = `<nmaprun><host><status state="up"/><address addr="192.168.1.1" addrtype="ipv4"/><hostnames><hostname name="router.home" type="PTR"/></hostnames><ports/></host></nmaprun>`;
+    const res8 = await parseNmapXML(xmlHostname);
+    assert(res8[0]?.hostname === 'router.home', "8. Host com Hostname");
+
+    // Scenario 10 & 11: Port Scripts & Host Scripts
+    const xmlScripts = `<nmaprun><host><status state="up"/><address addr="127.0.0.1" addrtype="ipv4"/>
+      <hostscript><script id="smb-os-discovery" output="OS: Windows 10"/></hostscript>
+      <ports><port protocol="tcp" portid="80"><state state="open"/><script id="http-title" output="Test Page"/></port></ports>
+    </host></nmaprun>`;
+    const res10 = await parseNmapXML(xmlScripts);
+    assert(res10[0]?.hostScripts?.[0]?.id === 'smb-os-discovery' && res10[0]?.ports[0]?.scripts?.[0]?.output === 'Test Page', "10/11. Scripts NSE de porta e de host");
+
+    // Scenario 12: OS Detection
+    const xmlOS = `<nmaprun><host><status state="up"/><address addr="10.0.0.5" addrtype="ipv4"/><os><osmatch name="Linux 5.10" accuracy="99"/></os></host></nmaprun>`;
+    const res12 = await parseNmapXML(xmlOS);
+    assert(res12[0]?.osMatches?.[0]?.name === 'Linux 5.10', "12. OS Detection");
+
+    // Scenario 13: XML Vazio
+    const res13 = await parseNmapXML("");
+    assert(Array.isArray(res13) && res13.length === 0, "13. XML vazio retorna array vazio sem falhar");
+
+    // Scenario 14: XML Inválido
+    let err14 = false;
+    try { await parseNmapXML("<nmaprun><corrupt"); } catch (e: any) { err14 = e.name === 'NmapXmlParseError'; }
+    assert(err14, "14. XML corrompido/inválido dispara NmapXmlParseError");
+
+    // Scenario 15: XML Sem nmaprun
+    let err15 = false;
+    try { await parseNmapXML("<otherroot></otherroot>"); } catch (e: any) { err15 = e.name === 'NmapXmlParseError'; }
+    assert(err15, "15. XML sem tag <nmaprun> dispara NmapXmlParseError");
+
+    // Scenario 16: Nmap sem hosts
+    const res16 = await parseNmapXML("<nmaprun scanner=\"nmap\" args=\"nmap -sn 10.0.0.0/24\"></nmaprun>");
+    assert(Array.isArray(res16) && res16.length === 0, "16. Nmap com 0 hosts retorna array vazio sem lançar erro");
 
     // 6. Local Network Info
     console.log("\n6. Validando detecção de rede local (getLocalNetworkInfo):");

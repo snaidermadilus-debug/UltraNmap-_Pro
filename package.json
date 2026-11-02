@@ -9,12 +9,13 @@
     "preview": "vite preview",
     "start": "NODE_ENV=production tsx server.ts",
     "test": "tsx tests/validate_core.ts",
-    "lint": "tsc --noEmit"
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20.19.0"
   },
   "dependencies": {
-    "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.3.3",
-    "@types/xml2js": "^0.4.14",
     "@vitejs/plugin-react": "^6.1.1",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
@@ -31,6 +32,7 @@
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/xml2js": "^0.4.14",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.3.3",

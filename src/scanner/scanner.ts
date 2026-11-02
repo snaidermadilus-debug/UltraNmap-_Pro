@@ -29,7 +29,7 @@ function killProcessGroup(proc: ChildProcess) {
 export function validateTarget(target: string): boolean {
   if (!target || typeof target !== 'string') return false;
   const clean = target.trim();
-  if (!clean || clean.startsWith('-')) return false;
+  if (!clean || clean.startsWith('-') || clean.length > 253) return false;
 
   // Check IPv4 or IPv4 CIDR
   const cidrMatch = clean.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?:\/(\d{1,2}))?$/);
@@ -44,8 +44,9 @@ export function validateTarget(target: string): boolean {
     return true;
   }
 
-  // Hostname validation: letters, numbers, '.', '-', cannot start with '-'
-  const hostnameMatch = /^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/;
+  // Hostname validation
+  if (clean.includes('..')) return false;
+  const hostnameMatch = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
   if (!hostnameMatch.test(clean)) return false;
 
   return true;
@@ -56,10 +57,14 @@ export function validateCustomPorts(customPorts?: string): boolean {
   const clean = customPorts.trim();
   if (!clean) return true;
 
+  if (clean.length > 2000) return false;
+
   const regex = /^[0-9]+(-[0-9]+)?(,[0-9]+(-[0-9]+)?)*$/;
   if (!regex.test(clean)) return false;
 
   const parts = clean.split(',');
+  if (parts.length > 500) return false;
+
   for (const part of parts) {
     if (part.includes('-')) {
       const [startStr, endStr] = part.split('-').map(Number);
@@ -279,7 +284,7 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
       const j = database.jobs.find((item: any) => item.id === jobId);
       if (j) {
         j.status = 'failed';
-        j.stderr = 'Erro: Binário do Nmap não encontrado no sistema.';
+        j.stderr = 'Nmap não encontrado no PATH.';
         j.end_time = new Date().toISOString();
       }
     });
@@ -398,32 +403,32 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
       }
     }
 
-    // Save full XML output using resolveOutputPath
+    // Save full XML output to outputs directory
+    let savedOutputPath: string | null = null;
     if (stdout) {
       const outputPath = resolveOutputPath(jobId);
       if (outputPath) {
         try {
           await fs.mkdir(getOutputsDir(), { recursive: true });
           await fs.writeFile(outputPath, stdout, 'utf-8');
+          savedOutputPath = outputPath;
         } catch (e) {
           console.error('[OUTPUT WRITE ERROR]', e);
         }
       }
     }
 
-    // Truncate stdout in db.json to max 200 KB
-    const dbStdout = stdout.length > 200 * 1024 ? stdout.substring(0, 200 * 1024) : stdout;
-
-    // Step 1: Save completed / failed status and stdout IMMEDIATELY
+    // Step 1: Save completed / failed status, summary, and outputPath (without storing raw XML stdout in db.json)
     await updateDb((database) => {
       const currentJob = database.jobs.find((j: any) => j.id === jobId);
       if (currentJob && currentJob.status !== 'cancelled') {
         currentJob.status = (code === 0 && !timedOut) ? 'completed' : 'failed';
-        currentJob.stdout = dbStdout;
+        currentJob.outputPath = savedOutputPath;
         currentJob.stderr = stderr.trim();
         currentJob.exit_code = code;
         currentJob.parsedData = parsedData;
         currentJob.end_time = new Date().toISOString();
+        delete currentJob.stdout;
       }
     });
 

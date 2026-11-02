@@ -1,5 +1,7 @@
 import path from 'path';
 
+export const JOB_ID_REGEX = /^[A-Za-z0-9-]{1,64}$/;
+
 export function getDataDir(): string {
   return path.resolve(process.env.ULTRA_DATA_DIR || 'data');
 }
@@ -10,8 +12,7 @@ export function getOutputsDir(): string {
 
 export function resolveOutputPath(id: string): string | null {
   if (!id || typeof id !== 'string') return null;
-  const regex = /^[A-Za-z0-9-]{1,64}$/;
-  if (!regex.test(id)) return null;
+  if (!JOB_ID_REGEX.test(id)) return null;
 
   const outputsDir = getOutputsDir();
   const resolvedPath = path.resolve(outputsDir, `${id}.xml`);
