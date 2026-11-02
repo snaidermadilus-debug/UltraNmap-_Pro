@@ -3,6 +3,8 @@ import express from 'express';
 import { execSync } from 'child_process';
 import os from 'os';
 import crypto from 'crypto';
+import path from 'path';
+import fs from 'fs/promises';
 import { readDb, updateDb } from './src/db/db.js';
 import { runScan, cancelScan, processQueue, validateTarget, validateCustomPorts, buildNmapArgs, isRoot } from './src/scanner/scanner.js';
 import { parseNmapXML } from './src/scanner/parser.js';
@@ -163,7 +165,6 @@ export async function startServer() {
 
   const app = express();
   app.use(express.json());
-  app.use(express.static('dist'));
 
   app.get('/api/status', (req, res) => {
     let nmapStatus = 'offline';
@@ -317,6 +318,24 @@ export async function startServer() {
     res.json({ success: true, data: { id } });
   });
 
+  app.get('/api/scans/:id/raw', async (req, res) => {
+    const { id } = req.params;
+    const filePath = path.resolve(`data/outputs/${id}.xml`);
+    try {
+      const rawContent = await fs.readFile(filePath, 'utf-8');
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      return res.send(rawContent);
+    } catch (e) {
+      const db = await readDb();
+      const job = db.jobs.find((j: any) => j.id === id);
+      if (job && job.stdout) {
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        return res.send(job.stdout);
+      }
+      return res.status(404).json({ success: false, error: 'Saída bruta não encontrada' });
+    }
+  });
+
   app.get('/api/scans/:id', async (req, res) => {
     const db = await readDb();
     const job = db.jobs.find((j: any) => j.id === req.params.id);
@@ -389,6 +408,30 @@ export async function startServer() {
     const db = await readDb();
     res.json({ success: true, data: db.logs || [] });
   });
+
+  if (process.env.NODE_ENV === 'production') {
+    app.use(express.static(path.resolve('dist')));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api')) return next();
+      res.sendFile(path.resolve('dist/index.html'));
+    });
+  } else {
+    try {
+      const { createServer: createViteServer } = await import('vite');
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: 'spa'
+      });
+      app.use(vite.middlewares);
+    } catch (e) {
+      console.warn('Vite dev middleware initialization skipped, serving dist:', e);
+      app.use(express.static(path.resolve('dist')));
+      app.get('*', (req, res, next) => {
+        if (req.path.startsWith('/api')) return next();
+        res.sendFile(path.resolve('dist/index.html'));
+      });
+    }
+  }
 
   const PORT = process.env.PORT || 3000;
   app.listen(Number(PORT), '0.0.0.0', () => {

@@ -1,4 +1,6 @@
 import { spawn, execSync, ChildProcess } from 'child_process';
+import fs from 'fs/promises';
+import path from 'path';
 import { readDb, updateDb } from '../db/db.js';
 import { parseNmapXML } from './parser.js';
 import { probeWebBatch } from './webProbe.js';
@@ -278,17 +280,7 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
   const nmap = spawn(nmapCommand, args);
   activeProcesses.set(jobId, nmap);
 
-  await updateDb((database) => {
-    const j = database.jobs.find((item: any) => item.id === jobId);
-    if (j) {
-      j.pid = nmap.pid;
-      j.nmapCommand = fullCommand;
-      if (!j.start_time) {
-        j.start_time = new Date().toISOString();
-      }
-    }
-  });
-
+  let finished = false;
   let stdout = '';
   let stderr = '';
   let isTruncated = false;
@@ -298,6 +290,7 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
   const timeoutMin = process.env.SCAN_TIMEOUT_MIN ? Number(process.env.SCAN_TIMEOUT_MIN) : 30;
   const timeoutMs = (isNaN(timeoutMin) || timeoutMin <= 0 ? 30 : timeoutMin) * 60 * 1000;
 
+  // 1a) Synchronously attach ALL listeners and setup timeout timer IMMEDIATELY after spawn
   const timer = setTimeout(async () => {
     console.warn(`[SCAN TIMEOUT] Job ID ${jobId} excedeu ${timeoutMin} min.`);
     timedOut = true;
@@ -305,6 +298,33 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
     try {
       nmap.kill('SIGKILL');
     } catch (e) {}
+
+    // Safety net: wait up to 5s for 'close' event
+    setTimeout(async () => {
+      if (finished) return;
+      finished = true;
+      stderr += `\nTimeout de execução excedido (${timeoutMin} min).`;
+      
+      if (stdout) {
+        try {
+          await fs.mkdir(path.resolve('data/outputs'), { recursive: true });
+          await fs.writeFile(path.resolve(`data/outputs/${jobId}.xml`), stdout, 'utf-8');
+        } catch (e) {
+          console.error('[OUTPUT WRITE ERROR]', e);
+        }
+      }
+
+      await updateDb((database) => {
+        const currentJob = database.jobs.find((j: any) => j.id === jobId);
+        if (currentJob && currentJob.status !== 'cancelled') {
+          currentJob.status = 'failed';
+          currentJob.stdout = stdout.length > 200 * 1024 ? stdout.substring(0, 200 * 1024) : stdout;
+          currentJob.stderr = stderr.trim();
+          currentJob.end_time = new Date().toISOString();
+        }
+      });
+      processQueue();
+    }, 5000);
   }, timeoutMs);
 
   nmap.stdout.on('data', (data) => {
@@ -323,6 +343,8 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
   });
 
   nmap.on('error', async (err) => {
+    if (finished) return;
+    finished = true;
     clearTimeout(timer);
     activeProcesses.delete(jobId);
     stderr += `\nErro de execução no processo Nmap: ${err.message}`;
@@ -339,6 +361,8 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
   });
 
   nmap.on('close', async (code) => {
+    if (finished) return;
+    finished = true;
     clearTimeout(timer);
     activeProcesses.delete(jobId);
 
@@ -360,12 +384,25 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
       }
     }
 
+    // Save full XML output to data/outputs/<jobId>.xml
+    if (stdout) {
+      try {
+        await fs.mkdir(path.resolve('data/outputs'), { recursive: true });
+        await fs.writeFile(path.resolve(`data/outputs/${jobId}.xml`), stdout, 'utf-8');
+      } catch (e) {
+        console.error('[OUTPUT WRITE ERROR]', e);
+      }
+    }
+
+    // Truncate stdout in db.json to max 200 KB
+    const dbStdout = stdout.length > 200 * 1024 ? stdout.substring(0, 200 * 1024) : stdout;
+
     // Step 1: Save completed / failed status and stdout IMMEDIATELY
     await updateDb((database) => {
       const currentJob = database.jobs.find((j: any) => j.id === jobId);
       if (currentJob && currentJob.status !== 'cancelled') {
         currentJob.status = (code === 0 && !timedOut) ? 'completed' : 'failed';
-        currentJob.stdout = stdout;
+        currentJob.stdout = dbStdout;
         currentJob.stderr = stderr.trim();
         currentJob.exit_code = code;
         currentJob.parsedData = parsedData;
@@ -408,6 +445,18 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
     }
 
     processQueue();
+  });
+
+  // 1b) Only AFTER attaching listeners, update DB with PID and command info
+  await updateDb((database) => {
+    const j = database.jobs.find((item: any) => item.id === jobId);
+    if (j) {
+      j.pid = nmap.pid;
+      j.nmapCommand = fullCommand;
+      if (!j.start_time) {
+        j.start_time = new Date().toISOString();
+      }
+    }
   });
 }
 

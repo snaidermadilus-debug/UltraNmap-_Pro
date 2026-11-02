@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+args="$*"
+if [[ "$args" == *"-O"* ]]; then
+  echo "requires root privileges" >&2
+  exit 1
+elif [[ "$args" == *"10.9.9.9"* ]]; then
+  exec sleep 30
+else
+  sleep 1
+  echo '<?xml version="1.0"?><nmaprun><host><status state="up"/><address addr="127.0.0.1"/><ports><port protocol="tcp" portid="80"><state state="open"/><service name="http"/></port></ports></host></nmaprun>'
+  exit 0
+fi

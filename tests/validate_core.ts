@@ -1,5 +1,10 @@
-import { readDb, writeDb } from '../src/db/db.js';
-import { runScan, cancelScan, buildNmapArgs, validateTarget, validateCustomPorts } from '../src/scanner/scanner.js';
+import http from 'http';
+import https from 'https';
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
+import { readDb, updateDb, writeDb } from '../src/db/db.js';
+import { runScan, buildNmapArgs, validateTarget, validateCustomPorts } from '../src/scanner/scanner.js';
 import { parseNmapXML } from '../src/scanner/parser.js';
 import { probeWeb } from '../src/scanner/webProbe.js';
 import { getLocalNetworkInfo } from '../server.js';
@@ -46,12 +51,15 @@ async function validate() {
 
   // 4. Non-Root Discovery Arguments Test
   console.log("\n4. Validando argumentos Nmap (Modo Root vs Non-Root):");
+  delete process.env.FORCE_NON_ROOT;
+  const originalForceNonRoot = process.env.FORCE_NON_ROOT;
   process.env.FORCE_NON_ROOT = '1';
   const nonRootDiscoveryArgs = buildNmapArgs('discovery', '192.168.1.0/24');
   assert(nonRootDiscoveryArgs.includes('-PS21,22,23,80,443,445,554,8080'), "Discovery sem root deve incluir -PS...");
 
   const nonRootStealthArgs = buildNmapArgs('stealth', '192.168.1.8', 'T2');
   assert(nonRootStealthArgs.includes('-sT') && !nonRootStealthArgs.includes('-sS'), "Stealth sem root deve trocar -sS por -sT");
+  delete process.env.FORCE_NON_ROOT;
 
   // 5. XML Parser Validation with NSE & OS
   console.log("\n5. Validando XML Parser (Script NSE & OS):");
@@ -89,6 +97,148 @@ async function validate() {
   console.log("\n6. Validando detecção de rede local (getLocalNetworkInfo):");
   const netInfo = getLocalNetworkInfo();
   assert(Boolean(netInfo.ip && netInfo.cidr), "Network Info retornou dados válidos");
+
+  // Prep environment PATH to include mock nmap binary
+  const fixturesBinDir = path.resolve('tests/fixtures/bin');
+  const originalPath = process.env.PATH;
+  process.env.PATH = `${fixturesBinDir}:${process.env.PATH}`;
+
+  // 7. Race Condition Test (6 sequential scans for profile 'os')
+  console.log("\n7. Validando teste de corrida (6 scans rápidos com nmap falso no PATH):");
+  // Clean DB jobs for clean test environment
+  await writeDb({ jobs: [], logs: [] });
+
+  const raceJobIds: string[] = [];
+  for (let i = 1; i <= 6; i++) {
+    const id = `race-test-${i}-${Date.now()}`;
+    const target = `127.0.0.${i}`;
+    raceJobIds.push(id);
+
+    await updateDb((db) => {
+      db.jobs.push({
+        id,
+        target,
+        type: 'os',
+        speed: 'T4',
+        status: 'queued',
+        queued_at: new Date().toISOString(),
+        start_time: null,
+        end_time: null
+      });
+    });
+
+    runScan(id, target, 'os', 'T4').catch(console.error);
+  }
+
+  // Poll DB until all 6 jobs finish
+  let raceDone = false;
+  const raceStart = Date.now();
+  while (Date.now() - raceStart < 10000) {
+    const db = await readDb();
+    const activeJobs = db.jobs.filter((j: any) => raceJobIds.includes(j.id) && (j.status === 'running' || j.status === 'queued'));
+    if (activeJobs.length === 0) {
+      raceDone = true;
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  const dbAfterRace = await readDb();
+  const raceJobs = dbAfterRace.jobs.filter((j: any) => raceJobIds.includes(j.id));
+  const allFailed = raceJobs.length === 6 && raceJobs.every((j: any) => j.status === 'failed');
+  const noneRunning = raceJobs.every((j: any) => j.status !== 'running' && j.status !== 'queued');
+
+  assert(raceDone && allFailed && noneRunning, "Todos os 6 scans 'os' terminaram como 'failed' sem travar a fila em 'running'");
+
+  // 8. Timeout Test (SCAN_TIMEOUT_MIN=0.03)
+  console.log("\n8. Validando teste de timeout (SCAN_TIMEOUT_MIN=0.03 no alvo 10.9.9.9):");
+  process.env.SCAN_TIMEOUT_MIN = '0.03';
+
+  const timeoutJobId = `timeout-test-${Date.now()}`;
+  const timeoutTarget = '10.9.9.9';
+
+  await updateDb((db) => {
+    db.jobs.push({
+      id: timeoutJobId,
+      target: timeoutTarget,
+      type: 'fast',
+      speed: 'T4',
+      status: 'queued',
+      queued_at: new Date().toISOString(),
+      start_time: null,
+      end_time: null
+    });
+  });
+
+  runScan(timeoutJobId, timeoutTarget, 'fast', 'T4').catch(console.error);
+
+  let timeoutDone = false;
+  const timeoutStart = Date.now();
+  while (Date.now() - timeoutStart < 12000) {
+    const db = await readDb();
+    const job = db.jobs.find((j: any) => j.id === timeoutJobId);
+    if (job && (job.status === 'failed' || job.status === 'completed')) {
+      timeoutDone = true;
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  delete process.env.SCAN_TIMEOUT_MIN;
+  const dbAfterTimeout = await readDb();
+  const timeoutJob = dbAfterTimeout.jobs.find((j: any) => j.id === timeoutJobId);
+  const isTimeoutFailed = timeoutJob?.status === 'failed' && timeoutJob?.stderr?.toLowerCase().includes('timeout');
+
+  assert(timeoutDone && Boolean(isTimeoutFailed), "Job com timeout (10.9.9.9) finalizou como 'failed' com mensagem de Timeout em stderr");
+
+  // Reset PATH
+  process.env.PATH = originalPath;
+
+  // 9. Probe Web Test (> 64 KB page HTTP & HTTPS)
+  console.log("\n9. Validando probeWeb para páginas > 64 KB (HTTP e HTTPS autoassinado):");
+
+  // HTTP Server
+  const bigPageHtml = '<html><head><title>Big Page HTTP Title</title></head><body>' + 'A'.repeat(200 * 1024) + '</body></html>';
+  const httpServer = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/html', 'Server': 'TestServer/1.0' });
+    res.end(bigPageHtml);
+  });
+
+  await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', () => resolve()));
+  const httpPort = (httpServer.address() as any).port;
+
+  const httpProbeResult = await probeWeb('127.0.0.1', String(httpPort), 'http');
+  assert(httpProbeResult.confirmed === true && httpProbeResult.title === 'Big Page HTTP Title', "HTTP probeWeb em página de 200 KB retornou confirmed:true e título correto");
+  httpServer.close();
+
+  // HTTPS Server with self-signed certificate
+  let keyPem: string = '';
+  let certPem: string = '';
+
+  try {
+    execSync('openssl req -x509 -newkey rsa:2048 -keyout /tmp/test-key.pem -out /tmp/test-cert.pem -days 1 -nodes -subj "/CN=localhost" 2>/dev/null');
+    keyPem = fs.readFileSync('/tmp/test-key.pem', 'utf-8');
+    certPem = fs.readFileSync('/tmp/test-cert.pem', 'utf-8');
+  } catch (e) {
+    // Fallback self-signed cert string if openssl CLI fails
+  }
+
+  if (keyPem && certPem) {
+    const bigPageHttpsHtml = '<html><head><title>Big Page HTTPS Title</title></head><body>' + 'B'.repeat(200 * 1024) + '</body></html>';
+    const httpsServer = https.createServer({ key: keyPem, cert: certPem }, (req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/html', 'Server': 'TestHTTPSServer/1.0' });
+      res.end(bigPageHttpsHtml);
+    });
+
+    await new Promise<void>((resolve) => httpsServer.listen(0, '127.0.0.1', () => resolve()));
+    const httpsPort = (httpsServer.address() as any).port;
+
+    const httpsProbeResult = await probeWeb('127.0.0.1', String(httpsPort), 'https');
+    assert(httpsProbeResult.confirmed === true && httpsProbeResult.title === 'Big Page HTTPS Title', "HTTPS probeWeb autoassinado em página de 200 KB retornou confirmed:true e título correto");
+    httpsServer.close();
+  } else {
+    console.log("   - HTTPS probeWeb skipped (openssl não disponível para gerar cert)");
+  }
 
   if (failed) {
     console.error("\n❌ ERRO: UM OU MAIS TESTES FALHARAM!");

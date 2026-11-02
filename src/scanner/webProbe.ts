@@ -45,7 +45,23 @@ export function probeWeb(target: string, port: string, protocol: string): Promis
           const remaining = MAX_BYTES - bytesRead;
           bodyText += chunk.toString('utf-8', 0, Math.min(chunk.length, remaining));
           bytesRead += chunk.length;
-          if (bytesRead >= MAX_BYTES) {
+          if (bytesRead >= MAX_BYTES && !resolved) {
+            resolved = true;
+            clearTimeout(timer);
+
+            const titleMatch = bodyText.match(/<title[^>]*>(.*?)<\/title>/i);
+            const title = titleMatch ? titleMatch[1].trim() : 'Servidor Web (Sem título)';
+
+            resolve({
+              url,
+              confirmed: true,
+              status: res.statusCode,
+              title,
+              server: (res.headers['server'] as string) || 'Não especificado',
+              contentType: (res.headers['content-type'] as string) || 'Não especificado'
+            });
+
+            try { res.destroy(); } catch (e) {}
             try { req.destroy(); } catch (e) {}
           }
         }
@@ -69,11 +85,18 @@ export function probeWeb(target: string, port: string, protocol: string): Promis
         });
       });
 
-      res.on('error', (err) => {
+      res.on('error', () => {
         if (resolved) return;
         resolved = true;
         clearTimeout(timer);
-        resolve({ url, confirmed: false, error: err.message });
+        resolve({ url, confirmed: false, error: 'Erro no socket HTTP' });
+      });
+
+      res.on('aborted', () => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timer);
+        resolve({ url, confirmed: false, error: 'Request aborted' });
       });
     });
 

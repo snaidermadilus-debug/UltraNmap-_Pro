@@ -15,6 +15,32 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
   const [loading, setLoading] = useState(true);
   const [selectedHostIndex, setSelectedHostIndex] = useState<number>(0);
   const [expandedPortIndex, setExpandedPortIndex] = useState<number | null>(null);
+  const [rawOutput, setRawOutput] = useState<string | null>(null);
+  const [loadingRaw, setLoadingRaw] = useState(false);
+
+  const handleToggleRaw = async () => {
+    if (!showTech) {
+      setShowTech(true);
+      if (!rawOutput) {
+        setLoadingRaw(true);
+        try {
+          const res = await fetch(`/api/scans/${id}/raw`);
+          if (res.ok) {
+            const text = await res.text();
+            setRawOutput(text);
+          } else {
+            setRawOutput(job?.stdout || 'Sem saída em stdout');
+          }
+        } catch (e) {
+          setRawOutput(job?.stdout || 'Sem saída em stdout');
+        } finally {
+          setLoadingRaw(false);
+        }
+      }
+    } else {
+      setShowTech(false);
+    }
+  };
 
   useEffect(() => {
     let interval: any = null;
@@ -507,7 +533,7 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
       {/* Collapsible Technical Details */}
       <div className="pt-2 font-mono">
         <button
-          onClick={() => setShowTech(!showTech)}
+          onClick={handleToggleRaw}
           className="w-full py-3 px-4 bg-zinc-950 hover:bg-zinc-900 text-emerald-400 text-xs font-bold rounded-2xl border border-zinc-800 flex items-center justify-center gap-2 transition-colors uppercase tracking-wider"
         >
           <Terminal size={14} /> {showTech ? '[ ESCONDER DADOS RAW/XML ]' : '[ MOSTRAR DADOS RAW/XML ]'}
@@ -529,9 +555,13 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
 
             <div className="space-y-1">
               <span className="text-[9px] font-bold text-zinc-500 uppercase">Saída Stdout (XML / Text):</span>
-              <pre className="bg-zinc-950 p-3 rounded-xl text-[10px] text-emerald-400 overflow-x-auto max-h-64 border border-zinc-800">
-                {stdout || 'Sem saída em stdout'}
-              </pre>
+              {loadingRaw ? (
+                <p className="text-xs text-emerald-400 font-mono py-2">[ Carregando saída bruta... ]</p>
+              ) : (
+                <pre className="bg-zinc-950 p-3 rounded-xl text-[10px] text-emerald-400 overflow-x-auto max-h-64 border border-zinc-800">
+                  {rawOutput || stdout || 'Sem saída em stdout'}
+                </pre>
+              )}
             </div>
 
             {stderr && (

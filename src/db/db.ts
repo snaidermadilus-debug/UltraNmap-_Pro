@@ -8,23 +8,38 @@ const MAX_HISTORY = 50;
 let mutexChain = Promise.resolve();
 
 export async function readDb() {
-  try {
-    const data = await fs.readFile(DB_PATH, 'utf-8');
-    return JSON.parse(data);
-  } catch (e: any) {
-    // Check if db.json exists and is corrupted
+  let attempts = 0;
+  while (true) {
     try {
-      const stats = await fs.stat(DB_PATH);
-      if (stats.isFile()) {
-        const timestamp = Date.now();
-        const corruptPath = path.resolve(`data/db.corrupt-${timestamp}.json`);
-        await fs.rename(DB_PATH, corruptPath);
-        console.error(`[DB CORRUPT ERROR] Arquivo db.json corrompido detectado! Renomeado para db.corrupt-${timestamp}.json. Reiniciando banco limpo.`);
+      const data = await fs.readFile(DB_PATH, 'utf-8');
+      return JSON.parse(data);
+    } catch (e: any) {
+      if (e && e.code === 'ENOENT') {
+        return { jobs: [], logs: [] };
       }
-    } catch (statErr) {
-      // File does not exist yet
+      if (e instanceof SyntaxError) {
+        try {
+          const stats = await fs.stat(DB_PATH);
+          if (stats.isFile()) {
+            const timestamp = Date.now();
+            const corruptPath = path.resolve(`data/db.corrupt-${timestamp}.json`);
+            await fs.rename(DB_PATH, corruptPath);
+            console.error(`[DB CORRUPT ERROR] Arquivo db.json corrompido detectado! Renomeado para db.corrupt-${timestamp}.json. Reiniciando banco limpo.`);
+          }
+        } catch (statErr) {
+          // File does not exist yet or stat failed
+        }
+        return { jobs: [], logs: [] };
+      }
+
+      attempts++;
+      if (attempts < 3) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        continue;
+      }
+
+      throw e;
     }
-    return { jobs: [], logs: [] };
   }
 }
 
