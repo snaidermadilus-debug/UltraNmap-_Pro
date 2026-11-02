@@ -11,7 +11,19 @@ export async function readDb() {
   try {
     const data = await fs.readFile(DB_PATH, 'utf-8');
     return JSON.parse(data);
-  } catch (e) {
+  } catch (e: any) {
+    // Check if db.json exists and is corrupted
+    try {
+      const stats = await fs.stat(DB_PATH);
+      if (stats.isFile()) {
+        const timestamp = Date.now();
+        const corruptPath = path.resolve(`data/db.corrupt-${timestamp}.json`);
+        await fs.rename(DB_PATH, corruptPath);
+        console.error(`[DB CORRUPT ERROR] Arquivo db.json corrompido detectado! Renomeado para db.corrupt-${timestamp}.json. Reiniciando banco limpo.`);
+      }
+    } catch (statErr) {
+      // File does not exist yet
+    }
     return { jobs: [], logs: [] };
   }
 }

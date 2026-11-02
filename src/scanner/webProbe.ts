@@ -1,7 +1,9 @@
-// Configure Node.js TLS to allow self-signed / invalid HTTPS certificates during probe
-if (typeof process !== 'undefined' && process.env) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-}
+import http from 'http';
+import https from 'https';
+
+const httpsAgent = new https.Agent({
+  rejectUnauthorized: false
+});
 
 export interface WebProbeResult {
   url: string;
@@ -13,70 +15,79 @@ export interface WebProbeResult {
   error?: string;
 }
 
-export async function probeWeb(target: string, port: string, protocol: string): Promise<WebProbeResult> {
+export function probeWeb(target: string, port: string, protocol: string): Promise<WebProbeResult> {
   const url = `${protocol}://${target}:${port}`;
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    
-    const response = await fetch(url, {
+  const isHttps = protocol === 'https';
+  const client = isHttps ? https : http;
+
+  return new Promise((resolve) => {
+    let resolved = false;
+
+    const timer = setTimeout(() => {
+      if (resolved) return;
+      resolved = true;
+      try { req.destroy(); } catch (e) {}
+      resolve({ url, confirmed: false, error: 'Timeout de resposta HTTP (4s)' });
+    }, 4000);
+
+    const req = client.request(url, {
       method: 'GET',
-      signal: controller.signal,
-      headers: { 'User-Agent': 'UltraNmapPro/2.0' }
-    });
-    clearTimeout(timeout);
-
-    // Limit reading body to max 64 KB (65536 bytes)
-    let bodyText = '';
-    if (response.body) {
-      const reader = response.body.getReader();
+      agent: isHttps ? httpsAgent : undefined,
+      headers: { 'User-Agent': 'UltraNmapPro/2.0' },
+      timeout: 4000
+    }, (res) => {
+      let bodyText = '';
       let bytesRead = 0;
-      const maxBytes = 64 * 1024;
-      const chunks: Uint8Array[] = [];
+      const MAX_BYTES = 64 * 1024; // 64 KB
 
-      while (bytesRead < maxBytes) {
-        const { done, value } = await reader.read();
-        if (done || !value) break;
-        chunks.push(value);
-        bytesRead += value.byteLength;
-      }
-      reader.cancel().catch(() => {});
-
-      const totalBuffer = new Uint8Array(Math.min(bytesRead, maxBytes));
-      let offset = 0;
-      for (const chunk of chunks) {
-        if (offset + chunk.byteLength > maxBytes) {
-          totalBuffer.set(chunk.subarray(0, maxBytes - offset), offset);
-          break;
-        } else {
-          totalBuffer.set(chunk, offset);
-          offset += chunk.byteLength;
+      res.on('data', (chunk: Buffer) => {
+        if (bytesRead < MAX_BYTES) {
+          const remaining = MAX_BYTES - bytesRead;
+          bodyText += chunk.toString('utf-8', 0, Math.min(chunk.length, remaining));
+          bytesRead += chunk.length;
+          if (bytesRead >= MAX_BYTES) {
+            try { req.destroy(); } catch (e) {}
+          }
         }
-      }
-      bodyText = new TextDecoder('utf-8', { fatal: false }).decode(totalBuffer);
-    }
+      });
 
-    const titleMatch = bodyText.match(/<title[^>]*>(.*?)<\/title>/i);
-    const title = titleMatch ? titleMatch[1].trim() : 'Servidor Web (Sem título)';
+      res.on('end', () => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timer);
 
-    return {
-      url,
-      confirmed: true,
-      status: response.status,
-      title,
-      server: response.headers.get('server') || 'Não especificado',
-      contentType: response.headers.get('content-type') || 'Não especificado',
-    };
-  } catch (e: any) {
-    return {
-      url,
-      confirmed: false,
-      error: e.message || 'Sem resposta HTTP',
-    };
-  }
+        const titleMatch = bodyText.match(/<title[^>]*>(.*?)<\/title>/i);
+        const title = titleMatch ? titleMatch[1].trim() : 'Servidor Web (Sem título)';
+
+        resolve({
+          url,
+          confirmed: true,
+          status: res.statusCode,
+          title,
+          server: (res.headers['server'] as string) || 'Não especificado',
+          contentType: (res.headers['content-type'] as string) || 'Não especificado'
+        });
+      });
+
+      res.on('error', (err) => {
+        if (resolved) return;
+        resolved = true;
+        clearTimeout(timer);
+        resolve({ url, confirmed: false, error: err.message });
+      });
+    });
+
+    req.on('error', (err) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      resolve({ url, confirmed: false, error: err.message });
+    });
+
+    req.end();
+  });
 }
 
-// Concurrency pool helper: max 4 parallel web probes
 export async function probeWebBatch(tasks: { target: string; port: string; protocol: string }[]): Promise<WebProbeResult[]> {
   const results: WebProbeResult[] = [];
   const chunkSize = 4;

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Shield, ExternalLink, Terminal, CheckCircle2, XCircle, AlertCircle, Clock, Server, Globe, ChevronLeft, ChevronRight, Cpu } from 'lucide-react';
+import { Shield, ExternalLink, Terminal, CheckCircle2, XCircle, AlertCircle, Server, Globe, ChevronLeft, ChevronRight, Cpu } from 'lucide-react';
 import ScanProgress from './ScanProgress';
+import { isVulnerableOutput } from '../scanner/utils';
 
 interface ScanDetailsProps {
   id: string;
@@ -12,6 +13,7 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
   const [showTech, setShowTech] = useState(false);
   const [viewMode, setViewMode] = useState<'progress' | 'technical'>('progress');
   const [loading, setLoading] = useState(true);
+  const [selectedHostIndex, setSelectedHostIndex] = useState<number>(0);
   const [expandedPortIndex, setExpandedPortIndex] = useState<number | null>(null);
 
   useEffect(() => {
@@ -38,6 +40,20 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
     interval = setInterval(fetchJob, 2000);
     return () => clearInterval(interval);
   }, [id]);
+
+  // Set default selected host to first host with open ports
+  useEffect(() => {
+    if (job?.parsedData && Array.isArray(job.parsedData) && job.parsedData.length > 0) {
+      const firstWithOpen = job.parsedData.findIndex((h: any) => 
+        Array.isArray(h.ports) && h.ports.some((p: any) => p.state === 'open')
+      );
+      if (firstWithOpen !== -1) {
+        setSelectedHostIndex(firstWithOpen);
+      } else {
+        setSelectedHostIndex(0);
+      }
+    }
+  }, [job?.parsedData]);
 
   const handleCancel = async () => {
     try {
@@ -90,14 +106,15 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
     );
   }
 
-  const host = Array.isArray(parsedData) && parsedData.length > 0 ? parsedData[0] : null;
-  const ports = host?.ports || [];
+  const hostsList = Array.isArray(parsedData) ? parsedData : [];
+  const activeHost = hostsList.length > 0 ? (hostsList[selectedHostIndex] || hostsList[0]) : null;
+  const ports = activeHost?.ports || [];
   const openPorts = ports.filter((p: any) => p.state === 'open');
-  const isHostUp = host ? host.status === 'up' : false;
+  const isHostUp = activeHost ? activeHost.status === 'up' : false;
   const confirmedWebServers = webResults || [];
 
-  const osMatches = host?.osMatches || [];
-  const hostScripts = host?.hostScripts || [];
+  const osMatches = activeHost?.osMatches || [];
+  const hostScripts = activeHost?.hostScripts || [];
 
   const allScripts: { id: string; output: string; port?: string }[] = [];
   if (Array.isArray(hostScripts)) {
@@ -127,24 +144,24 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
 
     if (type === 'discovery') {
       if (isHostUp) {
-        return `O alvo ${target} respondeu aos pacotes de descoberta (ARP/ICMP/TCP ping). O host está CONFIRMADO ONLINE.`;
+        return `O alvo ${activeHost?.address || target} respondeu aos pacotes de descoberta (ARP/ICMP/TCP ping). O host está CONFIRMADO ONLINE.`;
       } else {
-        return `O alvo ${target} NÃO respondeu aos pacotes de descoberta. O host pode estar offline ou bloqueando pings.`;
+        return `O alvo ${activeHost?.address || target} NÃO respondeu aos pacotes de descoberta. O host pode estar offline ou bloqueando pings.`;
       }
     }
 
     if (!isHostUp && openPorts.length === 0) {
-      return `HOST NÃO ENCONTRADO / NÃO RESPONDEU. O Nmap não recebeu resposta do alvo ${target} para confirmar disponibilidade. Nenhuma porta foi aberta.`;
+      return `HOST NÃO ENCONTRADO / NÃO RESPONDEU. O Nmap não recebeu resposta do alvo ${activeHost?.address || target} para confirmar disponibilidade. Nenhuma porta foi aberta.`;
     }
 
     if (openPorts.length === 0) {
-      return `O alvo ${target} respondeu ao escaneamento, mas NENHUMA das portas analisadas foi confirmada como aberta.`;
+      return `O alvo ${activeHost?.address || target} respondeu ao escaneamento, mas NENHUMA das portas analisadas foi confirmada como aberta.`;
     }
 
     const servicesList = openPorts.map((p: any) => p.service.toUpperCase()).filter(Boolean);
     const uniqueServices = Array.from(new Set(servicesList));
 
-    return `O alvo ${target} respondeu ao escaneamento. Foram analisadas ${ports.length} portas, sendo ${openPorts.length} confirmada(s) aberta(s). Serviços identificados: ${uniqueServices.join(', ')}.`;
+    return `O alvo ${activeHost?.address || target} respondeu ao escaneamento. Foram analisadas ${ports.length} portas, sendo ${openPorts.length} confirmada(s) aberta(s). Serviços identificados: ${uniqueServices.join(', ')}.`;
   };
 
   const getPortExplanation = (p: any) => {
@@ -182,6 +199,11 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
            <div>
              <span className="text-[10px] text-emerald-400 block uppercase font-bold tracking-widest">[ DIAGNÓSTICO TÉCNICO ]</span>
              <h2 className="text-xl font-bold text-white tracking-tight">{target}</h2>
+             {hostsList.length > 0 && (
+               <span className="text-[10px] text-zinc-400 block font-normal">
+                 {hostsList.length} {hostsList.length === 1 ? 'host encontrado' : 'hosts encontrados'}
+               </span>
+             )}
            </div>
         </div>
 
@@ -201,6 +223,41 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
           {status.toUpperCase()}
         </span>
       </div>
+
+      {/* Multi-Host Selector Tabs (if more than 1 host) */}
+      {hostsList.length > 1 && (
+        <div className="space-y-2 font-mono">
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest block">
+            [ SELECIONE O HOST ({hostsList.length}) ]
+          </span>
+          <div className="flex gap-2 overflow-x-auto pb-1 text-xs">
+            {hostsList.map((h: any, idx: number) => {
+              const openCount = Array.isArray(h.ports) ? h.ports.filter((p: any) => p.state === 'open').length : 0;
+              const isSelected = selectedHostIndex === idx;
+
+              return (
+                <button
+                  key={idx}
+                  onClick={() => {
+                    setSelectedHostIndex(idx);
+                    setExpandedPortIndex(null);
+                  }}
+                  className={`p-2.5 rounded-xl border text-left shrink-0 transition-all ${
+                    isSelected
+                      ? 'bg-emerald-400 text-black border-emerald-400 font-bold shadow-md shadow-emerald-500/20'
+                      : 'bg-zinc-950 border-zinc-800 text-zinc-300 hover:border-zinc-700'
+                  }`}
+                >
+                  <div className="font-mono font-bold text-xs">{h.address}</div>
+                  <div className={`text-[9px] ${isSelected ? 'text-zinc-950 font-bold' : 'text-zinc-500'}`}>
+                    {h.hostname ? h.hostname + ' · ' : ''}{openCount} portas
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Top Indicators Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 font-mono">
@@ -238,9 +295,9 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
           {getHumanDiagnosis()}
         </p>
 
-        {host?.mac && (
+        {activeHost?.mac && (
           <p className="text-[10px] text-zinc-500 font-mono pt-1">
-            Endereço MAC: <span className="text-zinc-200">{host.mac}</span> {host.vendor ? <span className="text-cyan-400">({host.vendor})</span> : ''}
+            Endereço MAC: <span className="text-zinc-200">{activeHost.mac}</span> {activeHost.vendor ? <span className="text-cyan-400">({activeHost.vendor})</span> : ''}
           </p>
         )}
       </div>
@@ -272,7 +329,7 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
           </h3>
           <div className="grid gap-2">
             {allScripts.map((s, idx) => {
-              const isVuln = /vulnerable|vulnerabilidade|vuln/i.test(s.output);
+              const isVuln = isVulnerableOutput(s.output);
               return (
                 <div 
                   key={idx} 
@@ -375,7 +432,7 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
               const isExpanded = expandedPortIndex === idx;
               const svcName = (p.service || '').toLowerCase();
               const isWebSvc = isOpen && (svcName.includes('http') || svcName.includes('ssl') || svcName.includes('web'));
-              const webUrl = isWebSvc ? `${svcName.includes('https') || svcName.includes('ssl') ? 'https' : 'http'}://${target}:${p.port}` : null;
+              const webUrl = isWebSvc ? `${svcName.includes('https') || svcName.includes('ssl') ? 'https' : 'http'}://${activeHost?.address || target}:${p.port}` : null;
 
               return (
                 <div

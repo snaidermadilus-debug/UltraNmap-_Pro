@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "tsx server.ts",
+    "test": "tsx tests/validate_core.ts",
     "lint": "tsc --noEmit"
   },
   "dependencies": {

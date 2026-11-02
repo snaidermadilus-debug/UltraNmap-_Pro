@@ -6,6 +6,7 @@ import { probeWebBatch } from './webProbe.js';
 const activeProcesses = new Map<string, ChildProcess>();
 const MAX_CONCURRENT_SCANS = 2;
 let isQueueProcessing = false;
+let needsRerun = false;
 
 // Root user detection
 export const isRoot = typeof process.getuid === 'function' ? process.getuid() === 0 : false;
@@ -66,9 +67,16 @@ export function buildNmapArgs(type: string, target: string, speed?: string, cust
     ? `-${speed.toUpperCase()}` 
     : (type === 'stealth' ? '-T2' : '-T4');
 
+  const forceNonRoot = typeof process !== 'undefined' && process.env.FORCE_NON_ROOT === '1';
+  const effectiveIsRoot = isRoot && !forceNonRoot;
+
   switch (type) {
     case 'discovery':
-      args = ['-sn', cleanTarget];
+      if (!effectiveIsRoot) {
+        args = ['-sn', '-PS21,22,23,80,443,445,554,8080', cleanTarget];
+      } else {
+        args = ['-sn', cleanTarget];
+      }
       break;
     case 'aggressive':
       args = ['-Pn', timing, '-A', cleanTarget];
@@ -127,7 +135,7 @@ export function buildNmapArgs(type: string, target: string, speed?: string, cust
   }
 
   // If running unprivileged (not root): swap -sS to -sT and add --unprivileged
-  if (!isRoot) {
+  if (!effectiveIsRoot) {
     const sSIndex = args.indexOf('-sS');
     if (sSIndex !== -1) {
       args[sSIndex] = '-sT';
@@ -169,14 +177,20 @@ export function buildNmapArgs(type: string, target: string, speed?: string, cust
 }
 
 export async function processQueue() {
-  if (isQueueProcessing) return;
+  if (isQueueProcessing) {
+    needsRerun = true;
+    return;
+  }
   isQueueProcessing = true;
 
   try {
-    const db = await readDb();
-    let runningJobs = db.jobs.filter((j: any) => j.status === 'running');
+    while (true) {
+      // Re-read DB at each iteration to ensure fresh, accurate state
+      const db = await readDb();
+      const runningJobs = db.jobs.filter((j: any) => j.status === 'running');
 
-    while (runningJobs.length < MAX_CONCURRENT_SCANS) {
+      if (runningJobs.length >= MAX_CONCURRENT_SCANS) break;
+
       const queuedJobs = db.jobs
         .filter((j: any) => j.status === 'queued')
         .sort((a: any, b: any) => {
@@ -200,11 +214,14 @@ export async function processQueue() {
         }
       });
 
-      runningJobs.push(queuedJob);
       startJobExecution(queuedJob.id, queuedJob.target, queuedJob.type, queuedJob.speed, queuedJob.customPorts).catch(console.error);
     }
   } finally {
     isQueueProcessing = false;
+    if (needsRerun) {
+      needsRerun = false;
+      processQueue().catch(console.error);
+    }
   }
 }
 
@@ -275,28 +292,19 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
   let stdout = '';
   let stderr = '';
   let isTruncated = false;
+  let timedOut = false;
   const MAX_STDOUT_BYTES = 5 * 1024 * 1024; // 5 MB
 
-  // Setup execution timeout (default 30 min or SCAN_TIMEOUT_MIN)
   const timeoutMin = process.env.SCAN_TIMEOUT_MIN ? Number(process.env.SCAN_TIMEOUT_MIN) : 30;
   const timeoutMs = (isNaN(timeoutMin) || timeoutMin <= 0 ? 30 : timeoutMin) * 60 * 1000;
 
   const timer = setTimeout(async () => {
     console.warn(`[SCAN TIMEOUT] Job ID ${jobId} excedeu ${timeoutMin} min.`);
+    timedOut = true;
     activeProcesses.delete(jobId);
     try {
       nmap.kill('SIGKILL');
     } catch (e) {}
-
-    await updateDb((database) => {
-      const currentJob = database.jobs.find((j: any) => j.id === jobId);
-      if (currentJob && currentJob.status !== 'cancelled') {
-        currentJob.status = 'failed';
-        currentJob.stderr = (stderr + `\nTimeout de execução excedido (${timeoutMin} min).`).trim();
-        currentJob.end_time = new Date().toISOString();
-      }
-    });
-    processQueue();
   }, timeoutMs);
 
   nmap.stdout.on('data', (data) => {
@@ -334,13 +342,17 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
     clearTimeout(timer);
     activeProcesses.delete(jobId);
 
-    // Root privileges error translation
+    if (timedOut) {
+      stderr += `\nTimeout de execução excedido (${timeoutMin} min).`;
+    }
+
+    // Translate root privilege error if present
     if (stderr.toLowerCase().includes('requires root privileges') || stderr.toLowerCase().includes('root privileges')) {
       stderr += '\n\n[ERRO DE PERMISSÃO] Este perfil requer privilégios de root para ser executado. Execute o aplicativo como root (su no Termux) ou escolha um perfil que não exija root (ex: Fast, Web, Serviços, Top 1000).';
     }
 
     let parsedData: any[] = [];
-    if (code === 0 && stdout) {
+    if (code === 0 && stdout && !timedOut) {
       try {
         parsedData = await parseNmapXML(stdout);
       } catch (e) {
@@ -352,7 +364,7 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
     await updateDb((database) => {
       const currentJob = database.jobs.find((j: any) => j.id === jobId);
       if (currentJob && currentJob.status !== 'cancelled') {
-        currentJob.status = code === 0 ? 'completed' : 'failed';
+        currentJob.status = (code === 0 && !timedOut) ? 'completed' : 'failed';
         currentJob.stdout = stdout;
         currentJob.stderr = stderr.trim();
         currentJob.exit_code = code;
@@ -362,7 +374,7 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
     });
 
     // Step 2: Run Web Probes AFTER saving completion status
-    if (code === 0 && parsedData.length > 0) {
+    if (code === 0 && !timedOut && parsedData.length > 0) {
       try {
         const probeTasks: { target: string; port: string; protocol: string }[] = [];
         for (const host of parsedData) {

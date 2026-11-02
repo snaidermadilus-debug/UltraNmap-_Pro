@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   Search, Play, RefreshCw, Wifi, Monitor, Zap, ShieldAlert, Cpu, 
   Terminal, Globe, Lock, Server, ShieldCheck, Database, Camera, 
-  Flame, Radio, AlertTriangle 
+  Flame, Radio, AlertTriangle, Info
 } from 'lucide-react';
 
 interface ScannerProps {
@@ -58,13 +58,15 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
       .catch(() => {});
   }, [initialTarget]);
 
-  // Dynamic preview from server endpoint
+  // Dynamic preview with 300ms debounce & AbortController
   useEffect(() => {
-    const fetchPreview = async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(async () => {
       try {
         const res = await fetch('/api/scans/preview', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             target: target.trim() || '192.168.1.1',
             type: selectedProfile,
@@ -76,10 +78,17 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
         if (data.success && data.data?.command) {
           setPreviewCommand(data.data.command);
         }
-      } catch (e) {}
-    };
+      } catch (e: any) {
+        if (e.name !== 'AbortError') {
+          // Ignore cancelled requests
+        }
+      }
+    }, 300);
 
-    fetchPreview();
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [target, selectedProfile, speed, customPorts]);
 
   const handleSelectProfile = (id: string) => {
@@ -227,6 +236,14 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
         </div>
       </div>
 
+      {/* Non-root Discovery Note */}
+      {!isRoot && selectedProfile === 'discovery' && (
+        <div className="bg-purple-950/40 border border-purple-800/80 p-3 rounded-xl flex items-center gap-2 text-[11px] text-purple-200 font-sans">
+          <Info size={16} className="text-purple-400 shrink-0" />
+          <span>Sem root não há ARP: hosts que não respondem nessas portas podem não aparecer.</span>
+        </div>
+      )}
+
       {/* Scrollable Profiles Grid (2 Columns) */}
       <div className="space-y-1.5">
         <div className="flex justify-between items-center text-[10px] font-bold text-zinc-400">
@@ -239,6 +256,11 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
             const isSelected = selectedProfile === p.id;
             const Icon = p.icon;
             const requiresRoot = ROOT_PROFILES.includes(p.id);
+
+            let displayFlag = p.flag;
+            if (!isRoot && p.id === 'stealth') {
+              displayFlag = 'CONNECT LENTO (-sT -T2)';
+            }
 
             return (
               <button
@@ -264,7 +286,7 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
                 </div>
 
                 <div className={`text-[9px] truncate ${isSelected ? 'text-zinc-950 font-bold' : 'text-zinc-500'}`}>
-                  {p.flag}
+                  {displayFlag}
                 </div>
               </button>
             );
