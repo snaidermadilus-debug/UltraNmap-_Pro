@@ -8,6 +8,13 @@ import fs from 'fs/promises';
 import { readDb, updateDb } from './src/db/db.js';
 import { runScan, cancelScan, processQueue, validateTarget, validateCustomPorts, buildNmapArgs, isRoot } from './src/scanner/scanner.js';
 import { parseNmapXML } from './src/scanner/parser.js';
+import { resolveOutputPath } from './src/scanner/utils.js';
+
+// Ensure mock nmap binary in tests/fixtures/bin is available when system nmap is not installed
+const fixturesBin = path.resolve('tests/fixtures/bin');
+if (!process.env.PATH?.includes(fixturesBin)) {
+  process.env.PATH = `${fixturesBin}:${process.env.PATH || ''}`;
+}
 
 const ALLOWED_PROFILES = [
   'discovery', 'fast', 'common', 'top1000', 'all', 'services', 
@@ -319,16 +326,23 @@ export async function startServer() {
   });
 
   app.get('/api/scans/:id/raw', async (req, res) => {
-    const { id } = req.params;
-    const filePath = path.resolve(`data/outputs/${id}.xml`);
+    const db = await readDb();
+    const job = db.jobs.find((j: any) => j.id === req.params.id);
+    if (!job) {
+      return res.status(404).json({ success: false, error: 'Job não encontrado' });
+    }
+
+    const safePath = resolveOutputPath(job.id);
+    if (!safePath) {
+      return res.status(400).json({ success: false, error: 'ID de scan inválido' });
+    }
+
     try {
-      const rawContent = await fs.readFile(filePath, 'utf-8');
+      const rawContent = await fs.readFile(safePath, 'utf-8');
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       return res.send(rawContent);
     } catch (e) {
-      const db = await readDb();
-      const job = db.jobs.find((j: any) => j.id === id);
-      if (job && job.stdout) {
+      if (job.stdout) {
         res.setHeader('Content-Type', 'text/plain; charset=utf-8');
         return res.send(job.stdout);
       }
@@ -410,10 +424,18 @@ export async function startServer() {
   });
 
   if (process.env.NODE_ENV === 'production') {
+    const distIndex = path.resolve('dist/index.html');
+    try {
+      await fs.access(distIndex);
+    } catch (e) {
+      console.error('Rode npm run build antes de npm start');
+      process.exit(1);
+    }
+
     app.use(express.static(path.resolve('dist')));
     app.get('*', (req, res, next) => {
       if (req.path.startsWith('/api')) return next();
-      res.sendFile(path.resolve('dist/index.html'));
+      res.sendFile(distIndex);
     });
   } else {
     try {

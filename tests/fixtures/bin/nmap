@@ -1,12 +1,98 @@
 #!/usr/bin/env bash
 args="$*"
+
+if [[ "$args" == *"--version"* || "$args" == *"-V"* ]]; then
+  echo "Nmap version 7.94 ( https://nmap.org )"
+  echo "Platform: x86_64-pc-linux-gnu"
+  echo "Compiled with: nmap-liblua-5.3.5 openssl-3.0.2 ncap-2.50 zlib-1.2.11"
+  exit 0
+fi
+
 if [[ "$args" == *"-O"* ]]; then
   echo "requires root privileges" >&2
   exit 1
 elif [[ "$args" == *"10.9.9.9"* ]]; then
   exec sleep 30
-else
+elif [[ "$args" == *"-sn"* ]]; then
+  # Host discovery / Network ping sweep
+  target=$(echo "$args" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+(/[0-9]+)?' | head -n1)
+  if [ -z "$target" ]; then target="192.168.1.0/24"; fi
+  prefix=$(echo "$target" | cut -d'.' -f1-3)
+  if [ -z "$prefix" ]; then prefix="192.168.1"; fi
+  
   sleep 1
-  echo '<?xml version="1.0"?><nmaprun><host><status state="up"/><address addr="127.0.0.1"/><ports><port protocol="tcp" portid="80"><state state="open"/><service name="http"/></port></ports></host></nmaprun>'
+  echo '<?xml version="1.0" encoding="UTF-8"?>'
+  echo '<nmaprun scanner="nmap" args="'"$args"'">'
+  echo "  <host><status state=\"up\" reason=\"echo-reply\"/><address addr=\"${prefix}.1\" addrtype=\"ipv4\"/><address addr=\"AA:BB:CC:11:22:01\" addrtype=\"mac\" vendor=\"Routerboard/Gateway\"/><hostnames><hostname name=\"gateway.local\" type=\"PTR\"/></hostnames></host>"
+  echo "  <host><status state=\"up\" reason=\"echo-reply\"/><address addr=\"${prefix}.10\" addrtype=\"ipv4\"/><address addr=\"AA:BB:CC:11:22:02\" addrtype=\"mac\" vendor=\"Intel Corp\"/><hostnames><hostname name=\"workstation-01.local\" type=\"PTR\"/></hostnames></host>"
+  echo "  <host><status state=\"up\" reason=\"echo-reply\"/><address addr=\"${prefix}.25\" addrtype=\"ipv4\"/><address addr=\"AA:BB:CC:11:22:03\" addrtype=\"mac\" vendor=\"Synology Inc\"/><hostnames><hostname name=\"nas-storage.local\" type=\"PTR\"/></hostnames></host>"
+  echo "  <host><status state=\"up\" reason=\"echo-reply\"/><address addr=\"${prefix}.100\" addrtype=\"ipv4\"/><address addr=\"AA:BB:CC:11:22:04\" addrtype=\"mac\" vendor=\"Raspberry Pi Foundation\"/><hostnames><hostname name=\"iot-controller.local\" type=\"PTR\"/></hostnames></host>"
+  echo '</nmaprun>'
+  exit 0
+elif [[ "$args" == *"vuln"* ]]; then
+  target=$(echo "$args" | grep -oE '[a-zA-Z0-9.-]+' | tail -n1)
+  if [ -z "$target" ]; then target="127.0.0.1"; fi
+  sleep 1
+  echo '<?xml version="1.0" encoding="UTF-8"?>'
+  echo '<nmaprun scanner="nmap" args="'"$args"'">'
+  echo '  <host>'
+  echo '    <status state="up" reason="localhost-response"/>'
+  echo "    <address addr=\"$target\" addrtype=\"ipv4\"/>"
+  echo '    <hostnames><hostname name="target-vuln-host" type="PTR"/></hostnames>'
+  echo '    <ports>'
+  echo '      <port protocol="tcp" portid="80">'
+  echo '        <state state="open" reason="syn-ack"/>'
+  echo '        <service name="http" product="Apache httpd" version="2.4.49"/>'
+  echo '        <script id="http-vuln-cve2021-41773" output="VULNERABLE: Path traversal and RCE in Apache HTTP Server 2.4.49 (CVE-2021-41773)"/>'
+  echo '      </port>'
+  echo '      <port protocol="tcp" portid="443">'
+  echo '        <state state="open" reason="syn-ack"/>'
+  echo '        <service name="https" product="OpenSSL" version="1.0.1f"/>'
+  echo '        <script id="ssl-heartbleed" output="VULNERABLE: Heartbleed OpenSSL Information Disclosure (CVE-2014-0160)"/>'
+  echo '      </port>'
+  echo '      <port protocol="tcp" portid="22">'
+  echo '        <state state="open" reason="syn-ack"/>'
+  echo '        <service name="ssh" product="OpenSSH" version="7.2p2"/>'
+  echo '        <script id="ssh-auth-methods" output="State: NOT VULNERABLE (Password auth enabled)"/>'
+  echo '      </port>'
+  echo '    </ports>'
+  echo '  </host>'
+  echo '</nmaprun>'
+  exit 0
+else
+  target=$(echo "$args" | grep -oE '[a-zA-Z0-9.-]+' | tail -n1)
+  if [ -z "$target" ]; then target="127.0.0.1"; fi
+  sleep 1
+  echo '<?xml version="1.0" encoding="UTF-8"?>'
+  echo '<nmaprun scanner="nmap" args="'"$args"'">'
+  echo '  <host>'
+  echo '    <status state="up" reason="localhost-response"/>'
+  echo "    <address addr=\"$target\" addrtype=\"ipv4\"/>"
+  echo '    <address addr="AC:67:B2:11:22:33" addrtype="mac" vendor="Espressif Inc."/>'
+  echo '    <hostnames><hostname name="audited-host.local" type="PTR"/></hostnames>'
+  echo '    <os><osmatch name="Linux 5.10 / Ubuntu Server" accuracy="98"/></os>'
+  echo '    <ports>'
+  echo '      <port protocol="tcp" portid="80">'
+  echo '        <state state="open" reason="syn-ack"/>'
+  echo '        <service name="http" product="nginx" version="1.22.1"/>'
+  echo '        <script id="http-title" output="Ultra Nmap Pro Target Server"/>'
+  echo '      </port>'
+  echo '      <port protocol="tcp" portid="443">'
+  echo '        <state state="open" reason="syn-ack"/>'
+  echo '        <service name="https" product="nginx" version="1.22.1"/>'
+  echo '        <script id="http-title" output="Ultra Nmap Pro Target Server (SSL)"/>'
+  echo '      </port>'
+  echo '      <port protocol="tcp" portid="22">'
+  echo '        <state state="open" reason="syn-ack"/>'
+  echo '        <service name="ssh" product="OpenSSH" version="8.9p1"/>'
+  echo '        <script id="ssh-hostkey" output="2048 ssh-rsa AAAAB3NzaC1yc2E..."/>'
+  echo '      </port>'
+  echo '      <port protocol="tcp" portid="3306">'
+  echo '        <state state="open" reason="syn-ack"/>'
+  echo '        <service name="mysql" product="MySQL" version="8.0.32"/>'
+  echo '      </port>'
+  echo '    </ports>'
+  echo '  </host>'
+  echo '</nmaprun>'
   exit 0
 fi

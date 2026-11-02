@@ -4,6 +4,7 @@ import path from 'path';
 import { readDb, updateDb } from '../db/db.js';
 import { parseNmapXML } from './parser.js';
 import { probeWebBatch } from './webProbe.js';
+import { resolveOutputPath, getOutputsDir } from './utils.js';
 
 const activeProcesses = new Map<string, ChildProcess>();
 const MAX_CONCURRENT_SCANS = 2;
@@ -12,6 +13,18 @@ let needsRerun = false;
 
 // Root user detection
 export const isRoot = typeof process.getuid === 'function' ? process.getuid() === 0 : false;
+
+function killProcessGroup(proc: ChildProcess) {
+  if (proc.pid) {
+    try {
+      process.kill(-proc.pid, 'SIGKILL');
+      return;
+    } catch (e) {}
+  }
+  try {
+    proc.kill('SIGKILL');
+  } catch (e) {}
+}
 
 export function validateTarget(target: string): boolean {
   if (!target || typeof target !== 'string') return false;
@@ -256,7 +269,7 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
   let nmapCommand = 'nmap';
 
   try {
-    execSync('which nmap');
+    execSync('command -v nmap');
   } catch (e) {
     nmapCommand = '';
   }
@@ -277,7 +290,7 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
   const fullCommand = `${nmapCommand} ${args.join(' ')}`;
   console.log(`[SCAN RUN] ID: ${jobId} | Target: ${target} | Command: ${fullCommand}`);
 
-  const nmap = spawn(nmapCommand, args);
+  const nmap = spawn(nmapCommand, args, { detached: true });
   activeProcesses.set(jobId, nmap);
 
   let finished = false;
@@ -295,9 +308,7 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
     console.warn(`[SCAN TIMEOUT] Job ID ${jobId} excedeu ${timeoutMin} min.`);
     timedOut = true;
     activeProcesses.delete(jobId);
-    try {
-      nmap.kill('SIGKILL');
-    } catch (e) {}
+    killProcessGroup(nmap);
 
     // Safety net: wait up to 5s for 'close' event
     setTimeout(async () => {
@@ -306,11 +317,14 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
       stderr += `\nTimeout de execução excedido (${timeoutMin} min).`;
       
       if (stdout) {
-        try {
-          await fs.mkdir(path.resolve('data/outputs'), { recursive: true });
-          await fs.writeFile(path.resolve(`data/outputs/${jobId}.xml`), stdout, 'utf-8');
-        } catch (e) {
-          console.error('[OUTPUT WRITE ERROR]', e);
+        const outputPath = resolveOutputPath(jobId);
+        if (outputPath) {
+          try {
+            await fs.mkdir(getOutputsDir(), { recursive: true });
+            await fs.writeFile(outputPath, stdout, 'utf-8');
+          } catch (e) {
+            console.error('[OUTPUT WRITE ERROR]', e);
+          }
         }
       }
 
@@ -384,13 +398,16 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
       }
     }
 
-    // Save full XML output to data/outputs/<jobId>.xml
+    // Save full XML output using resolveOutputPath
     if (stdout) {
-      try {
-        await fs.mkdir(path.resolve('data/outputs'), { recursive: true });
-        await fs.writeFile(path.resolve(`data/outputs/${jobId}.xml`), stdout, 'utf-8');
-      } catch (e) {
-        console.error('[OUTPUT WRITE ERROR]', e);
+      const outputPath = resolveOutputPath(jobId);
+      if (outputPath) {
+        try {
+          await fs.mkdir(getOutputsDir(), { recursive: true });
+          await fs.writeFile(outputPath, stdout, 'utf-8');
+        } catch (e) {
+          console.error('[OUTPUT WRITE ERROR]', e);
+        }
       }
     }
 
@@ -461,12 +478,10 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
 }
 
 export async function cancelScan(jobId: string) {
-  const process = activeProcesses.get(jobId);
-  if (process) {
+  const proc = activeProcesses.get(jobId);
+  if (proc) {
     activeProcesses.delete(jobId);
-    try {
-      process.kill('SIGKILL');
-    } catch (e) {}
+    killProcessGroup(proc);
   }
 
   await updateDb((database) => {

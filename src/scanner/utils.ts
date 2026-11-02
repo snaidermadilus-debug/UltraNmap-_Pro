@@ -1,3 +1,28 @@
+import path from 'path';
+
+export function getDataDir(): string {
+  return path.resolve(process.env.ULTRA_DATA_DIR || 'data');
+}
+
+export function getOutputsDir(): string {
+  return path.resolve(getDataDir(), 'outputs');
+}
+
+export function resolveOutputPath(id: string): string | null {
+  if (!id || typeof id !== 'string') return null;
+  const regex = /^[A-Za-z0-9-]{1,64}$/;
+  if (!regex.test(id)) return null;
+
+  const outputsDir = getOutputsDir();
+  const resolvedPath = path.resolve(outputsDir, `${id}.xml`);
+
+  if (!resolvedPath.startsWith(outputsDir + path.sep)) {
+    return null;
+  }
+
+  return resolvedPath;
+}
+
 export function isVulnerableOutput(text?: string): boolean {
   if (!text || typeof text !== 'string') return false;
   const upper = text.toUpperCase();
