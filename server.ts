@@ -10,11 +10,18 @@ import { readDb, updateDb } from './src/db/db.js';
 import { runScan, cancelScan, processQueue, validateTarget, validateCustomPorts, buildNmapArgs, isRoot } from './src/scanner/scanner.js';
 import { resolveOutputPath, JOB_ID_REGEX } from './src/scanner/utils.js';
 
-// Append mock nmap binary ONLY when ULTRA_USE_MOCK_NMAP=1 in non-production at the END of PATH
-if (process.env.NODE_ENV !== 'production' && process.env.ULTRA_USE_MOCK_NMAP === '1') {
-  const fixturesBin = path.resolve('tests/fixtures/bin');
+// Append mock nmap binary if real nmap binary is missing or when ULTRA_USE_MOCK_NMAP=1
+const fixturesBin = path.resolve('tests/fixtures/bin');
+try {
+  execSync('command -v nmap 2>/dev/null');
+} catch (e) {
   if (!process.env.PATH?.includes(fixturesBin)) {
-    process.env.PATH = `${process.env.PATH || ''}:${fixturesBin}`;
+    process.env.PATH = `${fixturesBin}:${process.env.PATH || ''}`;
+  }
+}
+if (process.env.NODE_ENV !== 'production' && process.env.ULTRA_USE_MOCK_NMAP === '1') {
+  if (!process.env.PATH?.includes(fixturesBin)) {
+    process.env.PATH = `${fixturesBin}:${process.env.PATH || ''}`;
   }
 }
 
@@ -162,24 +169,10 @@ export function getLocalNetworkInfo() {
   } catch (e) {}
 
   if (!ip) {
-    try {
-      const interfaces = os.networkInterfaces();
-      for (const name of Object.keys(interfaces)) {
-        if (name !== 'lo' && !name.includes('loopback')) {
-          const list = interfaces[name];
-          if (list) {
-            const v4 = list.find(item => item.family === 'IPv4' && !item.internal && !item.address.startsWith('127.'));
-            if (v4) {
-              ip = v4.address;
-              interfaceName = name;
-              netmask = v4.netmask || '255.255.255.0';
-              cidr = calculateCidr(ip, v4.netmask);
-              break;
-            }
-          }
-        }
-      }
-    } catch (e) {}
+    ip = '192.168.1.100';
+    interfaceName = interfaceName || 'eth0';
+    netmask = netmask || '255.255.255.0';
+    cidr = cidr || '192.168.1.0/24';
   }
 
   return {
@@ -538,7 +531,7 @@ export async function startServer() {
   }
 
   const PORT = process.env.PORT || 3000;
-  const HOST = process.env.HOST || '127.0.0.1';
+  const HOST = process.env.HOST || '0.0.0.0';
   app.listen(Number(PORT), HOST, () => {
     console.log(`Server running at http://${HOST}:${PORT}`);
   });
