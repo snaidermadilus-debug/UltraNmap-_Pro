@@ -168,13 +168,6 @@ export function getLocalNetworkInfo() {
     }
   } catch (e) {}
 
-  if (!ip) {
-    ip = '192.168.1.100';
-    interfaceName = interfaceName || 'eth0';
-    netmask = netmask || '255.255.255.0';
-    cidr = cidr || '192.168.1.0/24';
-  }
-
   return {
     ip: ip || null,
     interface: interfaceName || null,
@@ -217,9 +210,15 @@ export async function startServer() {
       const authHeader = req.headers['authorization'];
       const tokenHeader = req.headers['x-api-token'];
       const bearerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
-      const providedToken = tokenHeader || bearerToken;
+      const providedToken = (tokenHeader && typeof tokenHeader === 'string') ? tokenHeader : bearerToken;
 
-      if (providedToken !== apiToken) {
+      if (!providedToken) {
+        return res.status(401).json({ success: false, error: 'Acesso não autorizado: Token de API não fornecido.' });
+      }
+
+      const bufProvided = Buffer.from(providedToken);
+      const bufExpected = Buffer.from(apiToken);
+      if (bufProvided.length !== bufExpected.length || !crypto.timingSafeEqual(bufProvided, bufExpected)) {
         return res.status(401).json({ success: false, error: 'Acesso não autorizado: Token de API inválido.' });
       }
     }
@@ -319,12 +318,20 @@ export async function startServer() {
   });
 
   app.post('/api/scans/preview', (req, res) => {
-    if (req.body && typeof req.body !== 'object') {
+    if (!req.body || typeof req.body !== 'object') {
       return res.status(400).json({ success: false, error: 'Payload do body inválido.' });
     }
 
-    const { target, type, speed, customPorts } = req.body || {};
-    const t = target && typeof target === 'string' ? target.trim() : '127.0.0.1';
+    const { target, type, speed, customPorts } = req.body;
+    if (!target || typeof target !== 'string' || !target.trim()) {
+      return res.status(400).json({ success: false, error: 'Alvo é obrigatório para a pré-visualização.' });
+    }
+
+    const t = target.trim();
+    if (!validateTarget(t)) {
+      return res.status(400).json({ success: false, error: 'Endereço de alvo inválido.' });
+    }
+
     const profile = type && typeof type === 'string' && ALLOWED_PROFILES.includes(type) ? type : 'fast';
     const timing = speed && typeof speed === 'string' && ['T2', 'T3', 'T4', 'T5'].includes(speed) ? speed : (profile === 'stealth' ? 'T2' : 'T4');
     const validPorts = customPorts && typeof customPorts === 'string' ? customPorts : undefined;
@@ -532,6 +539,12 @@ export async function startServer() {
 
   const PORT = process.env.PORT || 3000;
   const HOST = process.env.HOST || '0.0.0.0';
+
+  const isLocalHost = HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1';
+  if (!isLocalHost && !process.env.ULTRA_API_TOKEN) {
+    console.warn(`[PROTEÇÃO DE SEGURANÇA] Servidor escutando na interface '${HOST}' sem ULTRA_API_TOKEN definido. Defina ULTRA_API_TOKEN para proteger os endpoints da API.`);
+  }
+
   app.listen(Number(PORT), HOST, () => {
     console.log(`Server running at http://${HOST}:${PORT}`);
   });

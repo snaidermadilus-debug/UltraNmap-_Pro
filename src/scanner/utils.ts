@@ -1,4 +1,5 @@
 import path from 'path';
+import fs from 'fs';
 
 export const JOB_ID_REGEX = /^[A-Za-z0-9-]{1,64}$/;
 
@@ -18,6 +19,17 @@ export function resolveOutputPath(id: string): string | null {
   const resolvedPath = path.resolve(outputsDir, `${id}.xml`);
 
   if (!resolvedPath.startsWith(outputsDir + path.sep)) {
+    return null;
+  }
+
+  try {
+    if (fs.existsSync(resolvedPath)) {
+      const real = fs.realpathSync(resolvedPath);
+      if (!real.startsWith(outputsDir + path.sep) && real !== outputsDir) {
+        return null;
+      }
+    }
+  } catch (e) {
     return null;
   }
 

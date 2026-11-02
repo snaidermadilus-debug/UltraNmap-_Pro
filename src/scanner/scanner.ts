@@ -14,16 +14,32 @@ let needsRerun = false;
 // Root user detection
 export const isRoot = typeof process.getuid === 'function' ? process.getuid() === 0 : false;
 
-function killProcessGroup(proc: ChildProcess) {
-  if (proc.pid) {
-    try {
-      process.kill(-proc.pid, 'SIGKILL');
-      return;
-    } catch (e) {}
-  }
+async function killProcessGroupGraceful(proc: ChildProcess): Promise<void> {
+  const pid = proc.pid;
+  if (!pid) return;
+
   try {
-    proc.kill('SIGKILL');
-  } catch (e) {}
+    process.kill(-pid, 'SIGTERM');
+  } catch (e) {
+    try {
+      proc.kill('SIGTERM');
+    } catch (e2) {}
+  }
+
+  await new Promise((r) => setTimeout(r, 300));
+
+  try {
+    process.kill(pid, 0);
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch (e) {
+      try {
+        proc.kill('SIGKILL');
+      } catch (e2) {}
+    }
+  } catch (e) {
+    // Process already exited cleanly
+  }
 }
 
 export function validateTarget(target: string): boolean {
@@ -44,8 +60,16 @@ export function validateTarget(target: string): boolean {
     return true;
   }
 
-  // Hostname validation
-  if (clean.includes('..')) return false;
+  // Hostname validation: reject double dots, leading/trailing dots, starting/ending hyphens in labels
+  if (clean.includes('..') || clean.startsWith('.') || clean.endsWith('.')) return false;
+
+  const labels = clean.split('.');
+  for (const label of labels) {
+    if (!label || label.startsWith('-') || label.endsWith('-') || label.length > 63) {
+      return false;
+    }
+  }
+
   const hostnameMatch = /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$/;
   if (!hostnameMatch.test(clean)) return false;
 
@@ -313,7 +337,7 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
     console.warn(`[SCAN TIMEOUT] Job ID ${jobId} excedeu ${timeoutMin} min.`);
     timedOut = true;
     activeProcesses.delete(jobId);
-    killProcessGroup(nmap);
+    killProcessGroupGraceful(nmap);
 
     // Safety net: wait up to 5s for 'close' event
     setTimeout(async () => {
@@ -486,7 +510,7 @@ export async function cancelScan(jobId: string) {
   const proc = activeProcesses.get(jobId);
   if (proc) {
     activeProcesses.delete(jobId);
-    killProcessGroup(proc);
+    await killProcessGroupGraceful(proc);
   }
 
   await updateDb((database) => {

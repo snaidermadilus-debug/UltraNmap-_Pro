@@ -40,11 +40,19 @@ async function validate() {
     assert(validateTarget('192.168.1.8'), "IPv4 válido (192.168.1.8)");
     assert(validateTarget('192.168.1.0/24'), "CIDR válido (192.168.1.0/24)");
     assert(validateTarget('localhost'), "Hostname válido (localhost)");
+    assert(validateTarget('valid-host.com'), "Hostname válido (valid-host.com)");
     assert(!validateTarget('-iL'), "Opção de comando (-iL) deve ser rejeitada");
     assert(!validateTarget('--privileged'), "Opção de comando (--privileged) deve ser rejeitada");
     assert(!validateTarget('999.999.999.999'), "IPv4 inválido (999.999.999.999) deve ser rejeitado");
     assert(!validateTarget('300.1.1.1/99'), "CIDR inválido (300.1.1.1/99) deve ser rejeitado");
     assert(!validateTarget('127.0.0.1; rm -rf'), "Injeção de comando deve ser rejeitada");
+    assert(!validateTarget('abc..def'), "Host com ponto duplo (abc..def) deve ser rejeitado");
+    assert(!validateTarget('abc.-def'), "Label começando com hífen (abc.-def) deve ser rejeitado");
+    assert(!validateTarget('abc-.def'), "Label terminando com hífen (abc-.def) deve ser rejeitado");
+    assert(!validateTarget('-def'), "Host começando com hífen (-def) deve ser rejeitado");
+    assert(!validateTarget('def-'), "Host terminando com hífen (def-) deve ser rejeitado");
+    assert(!validateTarget('.abc'), "Host começando com ponto (.abc) deve ser rejeitado");
+    assert(!validateTarget('abc.'), "Host terminando com ponto (abc.) deve ser rejeitado");
 
     // 2. Custom Ports Validation Tests
     console.log("\n2. Validando portas customizadas:");
@@ -134,10 +142,17 @@ async function validate() {
     const res16 = await parseNmapXML("<nmaprun scanner=\"nmap\" args=\"nmap -sn 10.0.0.0/24\"></nmaprun>");
     assert(Array.isArray(res16) && res16.length === 0, "16. Nmap com 0 hosts retorna array vazio sem lançar erro");
 
-    // 6. Local Network Info
-    console.log("\n6. Validando detecção de rede local (getLocalNetworkInfo):");
-    const netInfo = getLocalNetworkInfo();
-    assert(Boolean(netInfo.ip && netInfo.cidr), "Network Info retornou dados válidos");
+    // 6. DB Mutex Concurrency Test (20 simultâneos)
+    console.log("\n6. Validando concorrência de banco de dados (20 atualizações simultâneas):");
+    await writeDb({ jobs: [], logs: [] });
+    const updates = Array.from({ length: 20 }).map((_, idx) => 
+      updateDb((db) => {
+        db.logs.push(`Log Entry ${idx + 1}`);
+      })
+    );
+    await Promise.all(updates);
+    const finalDb = await readDb();
+    assert(finalDb.logs.length === 20, "20 atualizações simultâneas no banco foram gravadas sem perda de dados ou corrupção");
 
     // 7. Security Path Traversal Tests (resolveOutputPath)
     console.log("\n7. Validando segurança e path traversal (resolveOutputPath):");
@@ -260,7 +275,7 @@ async function validate() {
     const httpPort = (httpServer.address() as any).port;
 
     const httpProbeResult = await probeWeb('127.0.0.1', String(httpPort), 'http');
-    assert(httpProbeResult.confirmed === true && httpProbeResult.title === 'Big Page HTTP Title', "HTTP probeWeb em página de 200 KB retornou confirmed:true e título correto");
+    assert(httpProbeResult.confirmed === true && httpProbeResult.title === 'Big Page HTTP Title' && httpProbeResult.bodyTruncated === true, "HTTP probeWeb em página de 200 KB retornou confirmed:true, título correto e bodyTruncated:true");
     httpServer.close();
 
     // HTTPS Server with self-signed certificate
@@ -286,7 +301,7 @@ async function validate() {
       const httpsPort = (httpsServer.address() as any).port;
 
       const httpsProbeResult = await probeWeb('127.0.0.1', String(httpsPort), 'https');
-      assert(httpsProbeResult.confirmed === true && httpsProbeResult.title === 'Big Page HTTPS Title', "HTTPS probeWeb autoassinado em página de 200 KB retornou confirmed:true e título correto");
+      assert(httpsProbeResult.confirmed === true && httpsProbeResult.title === 'Big Page HTTPS Title' && httpsProbeResult.tlsValid === false, "HTTPS probeWeb autoassinado em página de 200 KB retornou confirmed:true e tlsValid:false");
       httpsServer.close();
     } else {
       console.log("   - HTTPS probeWeb skipped (openssl não disponível para gerar cert)");
