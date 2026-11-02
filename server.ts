@@ -538,11 +538,13 @@ export async function startServer() {
   }
 
   const PORT = process.env.PORT || 3000;
-  const HOST = process.env.HOST || '0.0.0.0';
+  const HOST = process.env.HOST || '127.0.0.1';
 
   const isLocalHost = HOST === '127.0.0.1' || HOST === 'localhost' || HOST === '::1';
-  if (!isLocalHost && !process.env.ULTRA_API_TOKEN) {
-    console.warn(`[PROTEÇÃO DE SEGURANÇA] Servidor escutando na interface '${HOST}' sem ULTRA_API_TOKEN definido. Defina ULTRA_API_TOKEN para proteger os endpoints da API.`);
+  if (!isLocalHost && !process.env.ULTRA_API_TOKEN && process.env.ALLOW_INSECURE_BIND !== '1') {
+    console.error(`[ERRO DE SEGURANÇA] Tentativa de escuta na interface externa '${HOST}' sem ULTRA_API_TOKEN configurado.`);
+    console.error(`Para autorizar a escuta em interfaces de rede externas sem autenticação, defina a variável de ambiente ALLOW_INSECURE_BIND=1 ou configure ULTRA_API_TOKEN.`);
+    process.exit(1);
   }
 
   app.listen(Number(PORT), HOST, () => {
