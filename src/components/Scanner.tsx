@@ -11,25 +11,27 @@ interface ScannerProps {
   initialTarget?: string;
 }
 
+const ROOT_PROFILES = ['firewall', 'udp', 'os', 'aggressive'];
+
 const allProfiles = [
-  { id: 'fast', name: '⚡ RÁPIDO', flag: 'FAST SCAN (-F)', icon: Zap },
-  { id: 'common', name: '◉ TOP 100', flag: 'TOP 100 PORTAS', icon: Server },
-  { id: 'top1000', name: '◉ TOP 1000', flag: 'TOP 1000 PORTAS', icon: Server },
-  { id: 'all', name: '🔥 TODAS', flag: '1–65535 PORTAS', icon: Flame },
-  { id: 'services', name: '⚙ SERVIÇOS', flag: 'VERSION DETECT (-sV)', icon: Cpu },
-  { id: 'web', name: '🌐 WEB', flag: 'HTTP/HTTPS PORTS', icon: Globe },
-  { id: 'os', name: '🖥 SO', flag: 'OS DETECTION (-O)', icon: Terminal },
-  { id: 'udp', name: '◉ UDP', flag: 'UDP SCAN (-sU)', icon: Radio },
-  { id: 'discovery', name: '🔍 DESCOBERTA', flag: 'HOST DISCOVERY (-sn)', icon: Search },
-  { id: 'aggressive', name: '💣 AGRESSIVO', flag: 'OS + VERSÃO + SCRIPTS (-A)', icon: ShieldAlert },
-  { id: 'vuln', name: '🛡 VULNERABILIDADES', flag: 'NSE VULN (--script vuln)', icon: ShieldAlert },
-  { id: 'scripts', name: '📜 SCRIPTS', flag: 'DEFAULT NSE (-sC)', icon: Terminal },
-  { id: 'db', name: '🗄 BANCO DE DADOS', flag: 'MYSQL/PG/MONGO/REDIS', icon: Database },
-  { id: 'iot', name: '📹 IOT / CÂMERAS', flag: 'RTSP/MQTT (554,1883...)', icon: Camera },
-  { id: 'smb', name: '🪟 SMB / WINDOWS', flag: 'SMB/RDP/NETBIOS (139,445)', icon: Server },
-  { id: 'ssl', name: '🔒 SSL / TLS', flag: 'CERTIFICADOS (ssl-enum)', icon: Lock },
-  { id: 'firewall', name: '🧱 FIREWALL', flag: 'ACK SCAN (-sA)', icon: ShieldCheck },
-  { id: 'stealth', name: '🕵 STEALTH', flag: 'SYN LENTO (-sS -T2)', icon: Lock },
+  { id: 'fast', name: 'RÁPIDO', flag: 'FAST SCAN (-F)', icon: Zap },
+  { id: 'common', name: 'TOP 100', flag: 'TOP 100 PORTAS', icon: Server },
+  { id: 'top1000', name: 'TOP 1000', flag: 'TOP 1000 PORTAS', icon: Server },
+  { id: 'all', name: 'TODAS', flag: '1–65535 PORTAS', icon: Flame },
+  { id: 'services', name: 'SERVIÇOS', flag: 'VERSION DETECT (-sV)', icon: Cpu },
+  { id: 'web', name: 'WEB', flag: 'HTTP/HTTPS PORTS', icon: Globe },
+  { id: 'os', name: 'SISTEMA OPERACIONAL', flag: 'OS DETECTION (-O)', icon: Terminal },
+  { id: 'udp', name: 'UDP', flag: 'UDP SCAN (-sU)', icon: Radio },
+  { id: 'discovery', name: 'DESCOBERTA', flag: 'HOST DISCOVERY (-sn)', icon: Search },
+  { id: 'aggressive', name: 'AGRESSIVO', flag: 'OS + VERSÃO + SCRIPTS (-A)', icon: ShieldAlert },
+  { id: 'vuln', name: 'VULNERABILIDADES', flag: 'NSE VULN (--script vuln)', icon: ShieldAlert },
+  { id: 'scripts', name: 'SCRIPTS', flag: 'DEFAULT NSE (-sC)', icon: Terminal },
+  { id: 'db', name: 'BANCO DE DADOS', flag: 'MYSQL/PG/MONGO/REDIS', icon: Database },
+  { id: 'iot', name: 'IOT / CÂMERAS', flag: 'RTSP/MQTT (554,1883...)', icon: Camera },
+  { id: 'smb', name: 'SMB / WINDOWS', flag: 'SMB/RDP/NETBIOS (139,445)', icon: Server },
+  { id: 'ssl', name: 'SSL / TLS', flag: 'CERTIFICADOS (ssl-enum)', icon: Lock },
+  { id: 'firewall', name: 'FIREWALL', flag: 'ACK SCAN (-sA)', icon: ShieldCheck },
+  { id: 'stealth', name: 'STEALTH', flag: 'SYN LENTO (-sS -T2)', icon: Lock },
 ];
 
 export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: ScannerProps) {
@@ -40,6 +42,7 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [netInfo, setNetInfo] = useState<any>(null);
+  const [previewCommand, setPreviewCommand] = useState('nmap -Pn -T4 -F 192.168.1.1 -oX -');
 
   useEffect(() => {
     if (initialTarget) {
@@ -55,95 +58,35 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
       .catch(() => {});
   }, [initialTarget]);
 
-  // Adjust default speed when stealth profile is clicked
+  // Dynamic preview from server endpoint
+  useEffect(() => {
+    const fetchPreview = async () => {
+      try {
+        const res = await fetch('/api/scans/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            target: target.trim() || '192.168.1.1',
+            type: selectedProfile,
+            speed,
+            customPorts: customPorts.trim() || undefined
+          })
+        });
+        const data = await res.json();
+        if (data.success && data.data?.command) {
+          setPreviewCommand(data.data.command);
+        }
+      } catch (e) {}
+    };
+
+    fetchPreview();
+  }, [target, selectedProfile, speed, customPorts]);
+
   const handleSelectProfile = (id: string) => {
     setSelectedProfile(id);
     if (id === 'stealth') {
       setSpeed('T2');
     }
-  };
-
-  const getPreviewCommand = () => {
-    const t = target.trim() || '192.168.1.1';
-    let cmd = `nmap`;
-    const speedFlag = `-${speed}`;
-    
-    switch (selectedProfile) {
-      case 'discovery':
-        return `nmap -sn ${t} -oX -`;
-      case 'aggressive':
-        cmd += ` -Pn ${speedFlag} -A`;
-        break;
-      case 'vuln':
-        cmd += ` -Pn ${speedFlag} --script vuln -sV`;
-        break;
-      case 'scripts':
-        cmd += ` -Pn ${speedFlag} -sC`;
-        break;
-      case 'db':
-        cmd += ` -Pn ${speedFlag} -p 3306,5432,27017,6379,1433`;
-        break;
-      case 'iot':
-        cmd += ` -Pn ${speedFlag} -p 554,8080,1883,37777,5000`;
-        break;
-      case 'smb':
-        cmd += ` -Pn ${speedFlag} -p 139,445,3389`;
-        break;
-      case 'ssl':
-        cmd += ` -Pn ${speedFlag} --script ssl-enum-ciphers -p 443,8443`;
-        break;
-      case 'firewall':
-        cmd += ` -Pn ${speedFlag} -sA`;
-        break;
-      case 'stealth':
-        cmd += ` -Pn -T2 -sS`;
-        break;
-      case 'fast':
-        cmd += ` -Pn ${speedFlag} -F`;
-        break;
-      case 'common':
-        cmd += ` -Pn ${speedFlag} --top-ports 100`;
-        break;
-      case 'top1000':
-        cmd += ` -Pn ${speedFlag} --top-ports 1000`;
-        break;
-      case 'all':
-        cmd += ` -Pn ${speedFlag} -p-`;
-        break;
-      case 'services':
-        cmd += ` -Pn ${speedFlag} -sV`;
-        break;
-      case 'web':
-        cmd += ` -Pn ${speedFlag} -p 80,443,8080,8443,8000,8888,3000,5000 -sV`;
-        break;
-      case 'os':
-        cmd += ` -Pn ${speedFlag} -O`;
-        break;
-      case 'udp':
-        cmd += ` -Pn ${speedFlag} -sU -p 53,123,161,1900,5353`;
-        break;
-      default:
-        cmd += ` -Pn ${speedFlag} -F`;
-        break;
-    }
-
-    if (customPorts.trim() && selectedProfile !== 'discovery') {
-      const pVal = customPorts.trim();
-      if (cmd.includes(' -p ')) {
-        cmd = cmd.replace(/ -p [^\s]+/, ` -p ${pVal}`);
-      } else if (cmd.includes(' --top-ports ')) {
-        cmd = cmd.replace(/ --top-ports \d+/, ` -p ${pVal}`);
-      } else if (cmd.includes(' -F')) {
-        cmd = cmd.replace(' -F', ` -p ${pVal}`);
-      } else if (cmd.includes(' -p-')) {
-        cmd = cmd.replace(' -p-', ` -p ${pVal}`);
-      } else {
-        cmd += ` -p ${pVal}`;
-      }
-    }
-
-    cmd += ` ${t} -oX -`;
-    return cmd;
   };
 
   const startScan = async () => {
@@ -172,12 +115,14 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
         setErrorMsg(data.error || 'Falha ao agendar auditoria.');
       }
     } catch (e: any) {
-      setErrorMsg('Erro: ' + e.message);
+      setErrorMsg('Erro de conexão com o servidor: ' + e.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const isRoot = netInfo?.isRoot || false;
+  const isCloudOrAp = netInfo?.ip?.startsWith('169.254.') || netInfo?.cidr?.endsWith('/32');
   const hasDetectedCidr = netInfo?.cidr && netInfo.cidr !== 'não detectado' && netInfo.cidr !== '127.0.0.1/32';
 
   return (
@@ -194,6 +139,14 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
           </span>
         )}
       </div>
+
+      {/* Cloud/Termux Network Warning Banner */}
+      {isCloudOrAp && (
+        <div className="bg-cyan-950/60 border border-cyan-800 p-3 rounded-xl flex items-center gap-2.5 text-[11px] text-cyan-200 font-sans">
+          <AlertTriangle size={18} className="text-cyan-400 shrink-0" />
+          <span>Este servidor não está na sua rede local. Para escanear seu Wi-Fi, rode o app no Termux.</span>
+        </div>
+      )}
 
       {/* Target Input Area */}
       <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-2">
@@ -229,12 +182,6 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
             <Monitor size={12} /> MEU IP
           </button>
         </div>
-
-        {errorMsg && (
-          <div className="p-2 bg-rose-950/80 border border-rose-800 text-rose-300 text-[10px] rounded-lg">
-            {errorMsg}
-          </div>
-        )}
       </div>
 
       {/* Custom Ports Input (Optional) */}
@@ -291,21 +238,31 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
           {allProfiles.map((p) => {
             const isSelected = selectedProfile === p.id;
             const Icon = p.icon;
+            const requiresRoot = ROOT_PROFILES.includes(p.id);
 
             return (
               <button
                 key={p.id}
                 onClick={() => handleSelectProfile(p.id)}
-                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between ${
+                className={`p-2.5 rounded-xl border text-left transition-all flex flex-col justify-between relative ${
                   isSelected
                     ? 'bg-emerald-400 text-black border-emerald-400 font-bold shadow-md shadow-emerald-500/20'
                     : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700 text-zinc-300'
                 }`}
               >
-                <div className="flex items-center gap-1.5 text-xs font-black truncate mb-1">
-                  <Icon size={14} className={isSelected ? 'text-black' : 'text-emerald-400'} />
-                  <span className="truncate">{p.name}</span>
+                <div className="flex items-center justify-between min-w-0 mb-1">
+                  <div className="flex items-center gap-1.5 text-xs font-black truncate">
+                    <Icon size={14} className={isSelected ? 'text-black shrink-0' : 'text-emerald-400 shrink-0'} />
+                    <span className="truncate">{p.name}</span>
+                  </div>
+
+                  {requiresRoot && !isRoot && (
+                    <span className={`text-[8px] font-bold px-1 py-0.2 rounded border shrink-0 ${isSelected ? 'bg-black text-amber-300 border-black' : 'bg-amber-950/80 text-amber-300 border-amber-800'}`}>
+                      REQUER ROOT
+                    </span>
+                  )}
                 </div>
+
                 <div className={`text-[9px] truncate ${isSelected ? 'text-zinc-950 font-bold' : 'text-zinc-500'}`}>
                   {p.flag}
                 </div>
@@ -321,7 +278,7 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
           COMANDO NMAP EXECUTADO:
         </span>
         <div className="p-2 bg-black rounded-lg border border-zinc-800 text-emerald-400 font-mono text-[11px] overflow-x-auto whitespace-nowrap">
-          {getPreviewCommand()}
+          {previewCommand}
         </div>
       </div>
 
@@ -340,14 +297,21 @@ export default function Scanner({ setActiveTab, onSelectJob, initialTarget }: Sc
         {loading ? (
           <div className="flex items-center gap-2">
             <RefreshCw size={16} className="animate-spin" />
-            ◉ SCANNING
+            SCANNING...
           </div>
         ) : (
           <>
-            <Play size={16} fill="currentColor" /> ▶ INICIAR SCAN
+            <Play size={16} fill="currentColor" /> INICIAR SCAN
           </>
         )}
       </button>
+
+      {/* Server Error Message Prominently Displayed Below Action Button */}
+      {errorMsg && (
+        <div className="p-3 bg-rose-950/90 border border-rose-800 text-rose-200 text-xs rounded-xl font-bold font-mono text-center">
+          {errorMsg}
+        </div>
+      )}
     </div>
   );
 }

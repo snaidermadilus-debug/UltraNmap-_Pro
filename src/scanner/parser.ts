@@ -1,5 +1,15 @@
 import xml2js from 'xml2js';
 
+export interface ParsedScript {
+  id: string;
+  output: string;
+}
+
+export interface ParsedOSMatch {
+  name: string;
+  accuracy: string;
+}
+
 export interface ParsedPort {
   port: string;
   protocol: string;
@@ -9,6 +19,7 @@ export interface ParsedPort {
   version?: string;
   extraInfo?: string;
   reason?: string;
+  scripts?: ParsedScript[];
 }
 
 export interface ParsedHost {
@@ -19,6 +30,26 @@ export interface ParsedHost {
   vendor?: string;
   hostname?: string;
   ports: ParsedPort[];
+  osMatches?: ParsedOSMatch[];
+  hostScripts?: ParsedScript[];
+}
+
+function parseScripts(scriptData: any): ParsedScript[] {
+  if (!scriptData) return [];
+  const scripts = Array.isArray(scriptData) ? scriptData : [scriptData];
+  return scripts.map((s: any) => ({
+    id: String(s.id || 'script'),
+    output: String(s.output || '')
+  })).filter(s => s.output.trim().length > 0);
+}
+
+function parseOSMatches(osData: any): ParsedOSMatch[] {
+  if (!osData || !osData.osmatch) return [];
+  const matches = Array.isArray(osData.osmatch) ? osData.osmatch : [osData.osmatch];
+  return matches.map((m: any) => ({
+    name: String(m.name || 'Sistema Operacional Desconhecido'),
+    accuracy: String(m.accuracy || '0')
+  }));
 }
 
 export async function parseNmapXML(xml: string): Promise<ParsedHost[]> {
@@ -67,6 +98,9 @@ export async function parseNmapXML(xml: string): Promise<ParsedHost[]> {
       const status = host.status ? (host.status.state || 'unknown') : 'unknown';
       const reason = host.status ? (host.status.reason || '') : '';
 
+      const osMatches = parseOSMatches(host.os);
+      const hostScripts = host.hostscript ? parseScripts(host.hostscript.script) : [];
+
       let ports: ParsedPort[] = [];
       if (host.ports && host.ports.port) {
         const rawPorts = Array.isArray(host.ports.port)
@@ -82,6 +116,7 @@ export async function parseNmapXML(xml: string): Promise<ParsedHost[]> {
           product: p.service ? p.service.product : undefined,
           version: p.service ? p.service.version : undefined,
           extraInfo: p.service ? p.service.extrainfo : undefined,
+          scripts: p.script ? parseScripts(p.script) : []
         }));
       }
 
@@ -93,6 +128,8 @@ export async function parseNmapXML(xml: string): Promise<ParsedHost[]> {
         vendor,
         hostname,
         ports,
+        osMatches,
+        hostScripts
       };
     });
   } catch (e) {

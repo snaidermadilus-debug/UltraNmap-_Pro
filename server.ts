@@ -3,9 +3,15 @@ import express from 'express';
 import { execSync } from 'child_process';
 import os from 'os';
 import crypto from 'crypto';
-import { readDb, writeDb } from './src/db/db.js';
-import { runScan, cancelScan } from './src/scanner/scanner.js';
+import { readDb, updateDb } from './src/db/db.js';
+import { runScan, cancelScan, processQueue, validateTarget, validateCustomPorts, buildNmapArgs, isRoot } from './src/scanner/scanner.js';
 import { parseNmapXML } from './src/scanner/parser.js';
+
+const ALLOWED_PROFILES = [
+  'discovery', 'fast', 'common', 'top1000', 'all', 'services', 
+  'web', 'os', 'udp', 'aggressive', 'vuln', 'scripts', 
+  'db', 'iot', 'smb', 'ssl', 'firewall', 'stealth'
+];
 
 function netmaskToPrefix(netmask: string): number {
   return netmask
@@ -76,7 +82,6 @@ export function getLocalNetworkInfo() {
     const addrOutput = execSync('ip -j addr show').toString();
     const addrJson = JSON.parse(addrOutput);
 
-    // Prioritize default route interface
     const targetIface = defaultIfaceName 
       ? addrJson.find((i: any) => i.ifname === defaultIfaceName)
       : null;
@@ -92,7 +97,6 @@ export function getLocalNetworkInfo() {
       }
     }
 
-    // Fallback if targetIface did not yield an IP
     if (!ip) {
       for (const iface of addrJson) {
         if (iface.ifname !== 'lo' && iface.addr_info) {
@@ -108,11 +112,8 @@ export function getLocalNetworkInfo() {
         }
       }
     }
-  } catch (e) {
-    // ip command not available
-  }
+  } catch (e) {}
 
-  // OS networkInterfaces fallback
   if (!ip) {
     try {
       const interfaces = os.networkInterfaces();
@@ -139,22 +140,26 @@ export function getLocalNetworkInfo() {
     interface: interfaceName || 'não detectado',
     cidr: cidr || 'não detectado',
     gateway: gateway || 'não detectado',
-    netmask: netmask || 'não detectado'
+    netmask: netmask || 'não detectado',
+    isRoot
   };
 }
 
 export async function startServer() {
-  const db = await readDb();
-  
-  // Clean orphan running states on restart
-  db.jobs.forEach((job: any) => {
-    if (job.status === 'running') {
-      job.status = 'failed';
-      job.stderr = 'Servidor foi reiniciado durante a execução do scan.';
-      job.end_time = new Date().toISOString();
+  await updateDb((db) => {
+    if (Array.isArray(db.jobs)) {
+      db.jobs.forEach((job: any) => {
+        if (job.status === 'running') {
+          job.status = 'failed';
+          job.stderr = 'Servidor foi reiniciado durante a execução do scan.';
+          job.end_time = new Date().toISOString();
+        }
+      });
     }
   });
-  await writeDb(db);
+
+  // Startup: process any queued jobs
+  processQueue().catch(console.error);
 
   const app = express();
   app.use(express.json());
@@ -175,7 +180,8 @@ export async function startServer() {
       data: {
         server: 'online',
         nmap: nmapStatus,
-        nmapVersion
+        nmapVersion,
+        isRoot
       }
     });
   });
@@ -199,7 +205,8 @@ export async function startServer() {
         nmapInstalled,
         nmapVersion,
         localNetwork: netInfo,
-        executionMode: 'local'
+        executionMode: 'local',
+        isRoot
       }
     });
   });
@@ -221,53 +228,91 @@ export async function startServer() {
       targetCidr = netInfo.cidr;
     }
 
-    if (!targetCidr || targetCidr === 'não detectado') {
+    if (!targetCidr || targetCidr === 'não detectado' || !validateTarget(targetCidr)) {
       return res.status(400).json({
         success: false,
-        error: 'Não foi possível detectar a rede local. Informe um CIDR manualmente.'
+        error: 'Não foi possível detectar a rede local. Informe um CIDR válido (ex: 192.168.1.0/24).'
       });
     }
 
     const id = crypto.randomUUID();
-    const db = await readDb();
-    db.jobs.push({
-      id,
-      target: targetCidr,
-      type: 'discovery',
-      status: 'queued',
-      queued_at: new Date().toISOString(),
-      start_time: null,
-      end_time: null
+    await updateDb((db) => {
+      db.jobs.push({
+        id,
+        target: targetCidr,
+        type: 'discovery',
+        status: 'queued',
+        queued_at: new Date().toISOString(),
+        start_time: null,
+        end_time: null
+      });
     });
-    await writeDb(db);
     
     runScan(id, targetCidr, 'discovery').catch(console.error);
     
     res.json({ success: true, data: { id, target: targetCidr } });
   });
 
+  app.post('/api/scans/preview', (req, res) => {
+    const { target, type, speed, customPorts } = req.body || {};
+    const t = target && typeof target === 'string' ? target.trim() : '192.168.1.1';
+    const profile = type && ALLOWED_PROFILES.includes(type) ? type : 'fast';
+    const timing = speed && ['T2', 'T3', 'T4', 'T5'].includes(speed) ? speed : (profile === 'stealth' ? 'T2' : 'T4');
+    
+    const args = buildNmapArgs(profile, t, timing, customPorts);
+    const command = `nmap ${args.join(' ')}`;
+    res.json({ success: true, data: { command } });
+  });
+
   app.post('/api/scans', async (req, res) => {
-    const { target, type, speed, customPorts } = req.body;
-    if (!target || !type) {
-      return res.status(400).json({ success: false, error: 'Alvo e tipo de scan são obrigatórios.' });
+    const { target, type, speed, customPorts } = req.body || {};
+    
+    if (!target || typeof target !== 'string' || !type) {
+      return res.status(400).json({ success: false, error: 'Alvo e perfil de scan são obrigatórios.' });
+    }
+
+    const cleanTarget = target.trim();
+    if (!validateTarget(cleanTarget)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Endereço de alvo inválido. Use um IPv4, CIDR ou Hostname válido sem opções do Nmap.' 
+      });
+    }
+
+    if (!ALLOWED_PROFILES.includes(type)) {
+      return res.status(400).json({ success: false, error: 'Perfil de scan inválido.' });
+    }
+
+    if (speed && !['T2', 'T3', 'T4', 'T5'].includes(speed)) {
+      return res.status(400).json({ success: false, error: 'Velocidade de timing inválida (T2 a T5).' });
+    }
+
+    if (customPorts && !validateCustomPorts(customPorts)) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Formato de portas customizadas inválido (use portas entre 1 e 65535, ex: 80,443 ou 1-1000).' 
+      });
     }
 
     const id = crypto.randomUUID();
-    const db = await readDb();
-    db.jobs.push({
-      id,
-      target: target.trim(),
-      type,
-      speed: speed || (type === 'stealth' ? 'T2' : 'T4'),
-      customPorts: customPorts ? customPorts.trim() : null,
-      status: 'queued',
-      queued_at: new Date().toISOString(),
-      start_time: null,
-      end_time: null
+    const finalSpeed = speed || (type === 'stealth' ? 'T2' : 'T4');
+    const finalCustomPorts = customPorts ? customPorts.trim() : null;
+
+    await updateDb((db) => {
+      db.jobs.push({
+        id,
+        target: cleanTarget,
+        type,
+        speed: finalSpeed,
+        customPorts: finalCustomPorts,
+        status: 'queued',
+        queued_at: new Date().toISOString(),
+        start_time: null,
+        end_time: null
+      });
     });
-    await writeDb(db);
     
-    runScan(id, target.trim(), type, speed, customPorts).catch(console.error);
+    runScan(id, cleanTarget, type, finalSpeed, finalCustomPorts).catch(console.error);
     
     res.json({ success: true, data: { id } });
   });
@@ -307,18 +352,20 @@ export async function startServer() {
       return res.status(400).json({ success: false, error: 'Não é possível excluir auditorias ativas ou na fila.' });
     }
 
-    db.jobs.splice(jobIndex, 1);
-    await writeDb(db);
+    await updateDb((database) => {
+      database.jobs = database.jobs.filter((j: any) => j.id !== req.params.id);
+    });
+
     res.json({ success: true });
   });
 
   app.delete('/api/history', async (req, res) => {
-    const db = await readDb();
-    const activeJobs = db.jobs.filter((j: any) => j.status === 'running' || j.status === 'queued');
-    const removedCount = db.jobs.length - activeJobs.length;
-
-    db.jobs = activeJobs;
-    await writeDb(db);
+    let removedCount = 0;
+    await updateDb((database) => {
+      const activeJobs = database.jobs.filter((j: any) => j.status === 'running' || j.status === 'queued');
+      removedCount = database.jobs.length - activeJobs.length;
+      database.jobs = activeJobs;
+    });
 
     res.json({ success: true, removedCount });
   });

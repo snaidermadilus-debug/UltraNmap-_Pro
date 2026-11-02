@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Shield, ExternalLink, Terminal, CheckCircle2, XCircle, AlertCircle, Clock, Server, Globe, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Shield, ExternalLink, Terminal, CheckCircle2, XCircle, AlertCircle, Clock, Server, Globe, ChevronLeft, ChevronRight, Cpu } from 'lucide-react';
 import ScanProgress from './ScanProgress';
 
 interface ScanDetailsProps {
@@ -95,6 +95,21 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
   const openPorts = ports.filter((p: any) => p.state === 'open');
   const isHostUp = host ? host.status === 'up' : false;
   const confirmedWebServers = webResults || [];
+
+  const osMatches = host?.osMatches || [];
+  const hostScripts = host?.hostScripts || [];
+
+  const allScripts: { id: string; output: string; port?: string }[] = [];
+  if (Array.isArray(hostScripts)) {
+    hostScripts.forEach((s: any) => allScripts.push({ ...s }));
+  }
+  if (Array.isArray(ports)) {
+    ports.forEach((p: any) => {
+      if (Array.isArray(p.scripts)) {
+        p.scripts.forEach((s: any) => allScripts.push({ ...s, port: `${p.port}/${p.protocol.toUpperCase()}` }));
+      }
+    });
+  }
 
   const getHumanDiagnosis = () => {
     if (status === 'failed') {
@@ -230,6 +245,63 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
         )}
       </div>
 
+      {/* OS Matches Section */}
+      {osMatches.length > 0 && (
+        <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 space-y-2 font-mono">
+          <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
+            <Cpu size={14} /> [ SISTEMA OPERACIONAL ]
+          </h3>
+          <div className="grid gap-1.5 text-xs">
+            {osMatches.map((osItem: any, idx: number) => (
+              <div key={idx} className="bg-zinc-900/80 p-2.5 rounded-xl border border-zinc-800 flex justify-between items-center">
+                <span className="font-bold text-white">{osItem.name}</span>
+                <span className="text-[10px] text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
+                  Acurácia: {osItem.accuracy}%
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* NSE Scripts Section */}
+      {allScripts.length > 0 && (
+        <div className="bg-zinc-950 p-4 rounded-2xl border border-zinc-800 space-y-2.5 font-mono">
+          <h3 className="text-xs font-bold text-purple-300 uppercase tracking-widest flex items-center gap-1.5">
+            <Terminal size={14} /> [ SCRIPTS NSE ({allScripts.length}) ]
+          </h3>
+          <div className="grid gap-2">
+            {allScripts.map((s, idx) => {
+              const isVuln = /vulnerable|vulnerabilidade|vuln/i.test(s.output);
+              return (
+                <div 
+                  key={idx} 
+                  className={`p-3 rounded-xl border ${
+                    isVuln 
+                      ? 'bg-rose-950/40 border-rose-800/80 text-rose-200' 
+                      : 'bg-zinc-900/80 border-zinc-800 text-zinc-300'
+                  }`}
+                >
+                  <div className="flex justify-between items-center mb-1 text-[11px] font-bold">
+                    <span className={isVuln ? 'text-rose-400' : 'text-purple-300'}>
+                      SCRIPT: {s.id} {s.port ? `(Porta ${s.port})` : ''}
+                    </span>
+                    {isVuln && (
+                      <span className="px-1.5 py-0.2 bg-rose-900 text-rose-200 text-[9px] rounded font-black border border-rose-700">
+                        VULNERÁVEL
+                      </span>
+                    )}
+                  </div>
+                  <pre className="text-[10px] whitespace-pre-wrap font-mono overflow-x-auto bg-black/60 p-2 rounded-lg border border-zinc-800/60">
+                    {s.output}
+                  </pre>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Failure Alert Box */}
       {status === 'failed' && (
         <div className="bg-rose-950/40 p-4 rounded-2xl border border-rose-800/80 text-rose-200 space-y-2 font-mono">
@@ -329,7 +401,7 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
 
                     <div className="flex items-center gap-2 shrink-0">
                       <span
-                        className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                        className={`px-2.5 py-1 rounded text-[9px] font-bold ${
                           isOpen
                             ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
                             : isFiltered
