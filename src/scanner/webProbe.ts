@@ -19,7 +19,8 @@ export interface WebProbeResult {
 }
 
 export function probeWeb(target: string, port: string, protocol: string): Promise<WebProbeResult> {
-  const url = `${protocol}://${target}:${port}`;
+  const host = target.includes(':') && !target.startsWith('[') ? `[${target}]` : target;
+  const url = `${protocol}://${host}:${port}`;
   const isHttps = protocol === 'https';
   const client = isHttps ? https : http;
 
@@ -64,8 +65,8 @@ export function probeWeb(target: string, port: string, protocol: string): Promis
 
           if (bytesRead >= MAX_BYTES) {
             bodyTruncated = true;
-            const titleMatch = bodyText.match(/<title[^>]*>(.*?)<\/title>/i);
-            const title = titleMatch ? titleMatch[1].trim() : 'Servidor Web (Sem título)';
+            const titleMatch = bodyText.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+            const title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() || 'Servidor Web (Sem título)' : 'Servidor Web (Sem título)';
 
             safeResolve({
               url,
@@ -84,8 +85,8 @@ export function probeWeb(target: string, port: string, protocol: string): Promis
       res.on('end', () => {
         if (resolved) return;
 
-        const titleMatch = bodyText.match(/<title[^>]*>(.*?)<\/title>/i);
-        const title = titleMatch ? titleMatch[1].trim() : 'Servidor Web (Sem título)';
+        const titleMatch = bodyText.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+        const title = titleMatch ? titleMatch[1].replace(/\s+/g, ' ').trim() || 'Servidor Web (Sem título)' : 'Servidor Web (Sem título)';
 
         safeResolve({
           url,

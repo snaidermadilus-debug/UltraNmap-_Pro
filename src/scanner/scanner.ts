@@ -292,7 +292,11 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
 
   const db = await readDb();
   const job = db.jobs.find((j: any) => j.id === jobId);
-  if (!job) return;
+  // The job may have been cancelled between being marked 'running' and reaching this point
+  if (!job || job.status !== 'running') {
+    processQueue().catch(console.error);
+    return;
+  }
 
   const args = buildNmapArgs(job.type || type, job.target || target, job.speed || speed, job.customPorts || customPorts);
   let nmapCommand = 'nmap';
@@ -370,6 +374,10 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
     }, 5000);
   }, timeoutMs);
 
+  // Decode as a stream so multi-byte UTF-8 characters split across chunks are not corrupted
+  nmap.stdout.setEncoding('utf8');
+  nmap.stderr.setEncoding('utf8');
+
   nmap.stdout.on('data', (data) => {
     if (stdout.length < MAX_STDOUT_BYTES) {
       stdout += data.toString();
@@ -442,52 +450,59 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
       }
     }
 
-    // Step 1: Save completed / failed status, summary, and outputPath (without storing raw XML stdout in db.json)
+    const isSuccess = code === 0 && !timedOut;
+    const probeTasks: { target: string; port: string; protocol: string }[] = [];
+    if (isSuccess) {
+      for (const host of parsedData) {
+        for (const portObj of host.ports || []) {
+          if (portObj.state === 'open') {
+            const svc = (portObj.service || '').toLowerCase();
+            const pNum = Number(portObj.port);
+            const isWebPort = [80, 443, 8080, 8443, 8000, 8888, 3000, 5000].includes(pNum);
+            const isWebService = svc.includes('http') || svc.includes('ssl') || svc.includes('web');
+
+            if (isWebService || isWebPort) {
+              const protocol = (svc.includes('https') || svc.includes('ssl') || pNum === 443 || pNum === 8443) ? 'https' : 'http';
+              probeTasks.push({ target: host.address, port: portObj.port, protocol });
+            }
+          }
+        }
+      }
+    }
+
+    // Step 1: Save completed / failed status, summary, and outputPath (without storing raw XML stdout in db.json).
+    // webProbePending tells the UI to keep polling until the web results arrive in step 2.
+    let shouldProbe = false;
     await updateDb((database) => {
       const currentJob = database.jobs.find((j: any) => j.id === jobId);
       if (currentJob && currentJob.status !== 'cancelled') {
-        currentJob.status = (code === 0 && !timedOut) ? 'completed' : 'failed';
+        currentJob.status = isSuccess ? 'completed' : 'failed';
         currentJob.outputPath = savedOutputPath;
         currentJob.stderr = stderr.trim();
         currentJob.exit_code = code;
         currentJob.parsedData = parsedData;
         currentJob.end_time = new Date().toISOString();
         delete currentJob.stdout;
+        shouldProbe = probeTasks.length > 0;
+        if (shouldProbe) currentJob.webProbePending = true;
       }
     });
 
     // Step 2: Run Web Probes AFTER saving completion status
-    if (code === 0 && !timedOut && parsedData.length > 0) {
+    if (shouldProbe) {
+      let webResults: any[] = [];
       try {
-        const probeTasks: { target: string; port: string; protocol: string }[] = [];
-        for (const host of parsedData) {
-          for (const portObj of host.ports) {
-            if (portObj.state === 'open') {
-              const svc = (portObj.service || '').toLowerCase();
-              const pNum = Number(portObj.port);
-              const isWebPort = [80, 443, 8080, 8443, 8000, 8888, 3000, 5000].includes(pNum);
-              const isWebService = svc.includes('http') || svc.includes('ssl') || svc.includes('web');
-
-              if (isWebService || isWebPort) {
-                const protocol = (svc.includes('https') || svc.includes('ssl') || pNum === 443 || pNum === 8443) ? 'https' : 'http';
-                probeTasks.push({ target: host.address, port: portObj.port, protocol });
-              }
-            }
-          }
-        }
-
-        if (probeTasks.length > 0) {
-          const webResults = await probeWebBatch(probeTasks);
-          await updateDb((database) => {
-            const currentJob = database.jobs.find((j: any) => j.id === jobId);
-            if (currentJob) {
-              currentJob.webResults = webResults;
-            }
-          });
-        }
+        webResults = await probeWebBatch(probeTasks);
       } catch (e) {
         console.error('[WEB PROBE POST-PROCESS ERROR]', e);
       }
+      await updateDb((database) => {
+        const currentJob = database.jobs.find((j: any) => j.id === jobId);
+        if (currentJob) {
+          currentJob.webResults = webResults;
+          delete currentJob.webProbePending;
+        }
+      });
     }
 
     processQueue();
@@ -515,11 +530,12 @@ export async function cancelScan(jobId: string) {
 
   await updateDb((database) => {
     const job = database.jobs.find((j: any) => j.id === jobId);
-    if (job) {
+    if (job && (job.status === 'running' || job.status === 'queued')) {
       job.status = 'cancelled';
       job.end_time = new Date().toISOString();
+      delete job.webProbePending;
     }
   });
 
-  processQueue();
+  processQueue().catch(console.error);
 }

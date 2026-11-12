@@ -14,6 +14,7 @@ export default function NetworkDiscovery({ onSelectTarget, onSelectJob }: Networ
   const [scanResult, setScanResult] = useState<any>(null);
   const [selectedHostModal, setSelectedHostModal] = useState<string | null>(null);
   const [quickScanLoading, setQuickScanLoading] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   const fetchNetwork = async () => {
     setLoading(true);
@@ -40,6 +41,12 @@ export default function NetworkDiscovery({ onSelectTarget, onSelectJob }: Networ
     const poll = async () => {
       try {
         const res = await fetch(`/api/scans/${activeJobId}`);
+        if (res.status === 404) {
+          setScanError('O job de descoberta não foi encontrado (pode ter sido removido).');
+          setScanning(false);
+          setActiveJobId(null);
+          return;
+        }
         const data = await res.json();
         if (data.success) {
           const job = data.data;
@@ -47,6 +54,11 @@ export default function NetworkDiscovery({ onSelectTarget, onSelectJob }: Networ
             setScanResult(job);
             setScanning(false);
             setActiveJobId(null);
+            if (job.status === 'failed') {
+              setScanError(job.stderr || 'A varredura da rede falhou.');
+            } else if (job.status === 'cancelled') {
+              setScanError('A varredura da rede foi cancelada.');
+            }
           }
         }
       } catch (e) {
@@ -62,6 +74,7 @@ export default function NetworkDiscovery({ onSelectTarget, onSelectJob }: Networ
     if (!netInfo?.cidr || netInfo.cidr === 'não detectado') return;
     setScanning(true);
     setScanResult(null);
+    setScanError(null);
 
     try {
       const res = await fetch('/api/network/scan', {
@@ -73,10 +86,12 @@ export default function NetworkDiscovery({ onSelectTarget, onSelectJob }: Networ
       if (data.success) {
         setActiveJobId(data.data.id);
       } else {
+        setScanError(data.error || 'Não foi possível iniciar a varredura da rede.');
         setScanning(false);
       }
     } catch (e) {
       console.error(e);
+      setScanError('Falha de conexão com o servidor.');
       setScanning(false);
     }
   };
@@ -179,6 +194,12 @@ export default function NetworkDiscovery({ onSelectTarget, onSelectJob }: Networ
           )}
         </button>
       </div>
+
+      {scanError && !scanning && (
+        <div role="alert" className="bg-red-950/40 p-3 rounded-xl border border-red-900/50 text-xs text-red-400">
+          {scanError}
+        </div>
+      )}
 
       {/* Discovered Hosts Section */}
       {scanning && (
