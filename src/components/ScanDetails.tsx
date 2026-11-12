@@ -48,10 +48,17 @@ export default function ScanDetails({ id, onBack }: ScanDetailsProps) {
     const fetchJob = async () => {
       try {
         const res = await fetch(`/api/scans/${id}`);
+        if (res.status === 404) {
+          if (interval) clearInterval(interval);
+          setJob(null);
+          return;
+        }
         const data = await res.json();
         if (data.success) {
           setJob(data.data);
-          if (data.data.status === 'completed' || data.data.status === 'failed' || data.data.status === 'cancelled') {
+          const isFinal = ['completed', 'failed', 'cancelled'].includes(data.data.status);
+          // Keep polling while web probes are still being collected after nmap finished
+          if (isFinal && !data.data.webProbePending) {
             if (interval) clearInterval(interval);
           }
         }

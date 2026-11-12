@@ -5,23 +5,40 @@ import os from 'os';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs/promises';
+import fsSync from 'fs';
 import { fileURLToPath } from 'url';
 import { readDb, updateDb } from './src/db/db.js';
 import { runScan, cancelScan, processQueue, validateTarget, validateCustomPorts, buildNmapArgs, isRoot } from './src/scanner/scanner.js';
 import { resolveOutputPath, JOB_ID_REGEX } from './src/scanner/utils.js';
 
-// Append mock nmap binary if real nmap binary is missing or when ULTRA_USE_MOCK_NMAP=1
+// The mock nmap returns fabricated hosts, so it must never be enabled implicitly.
+// It is only appended to the end of PATH (a real nmap always wins) when explicitly requested in development.
 const fixturesBin = path.resolve('tests/fixtures/bin');
-try {
-  execSync('command -v nmap 2>/dev/null');
-} catch (e) {
-  if (!process.env.PATH?.includes(fixturesBin)) {
-    process.env.PATH = `${fixturesBin}:${process.env.PATH || ''}`;
+if (process.env.NODE_ENV !== 'production' && process.env.ULTRA_USE_MOCK_NMAP === '1') {
+  const pathEntries = (process.env.PATH || '').split(path.delimiter);
+  if (!pathEntries.includes(fixturesBin)) {
+    process.env.PATH = [...pathEntries.filter(Boolean), fixturesBin].join(path.delimiter);
   }
 }
-if (process.env.NODE_ENV !== 'production' && process.env.ULTRA_USE_MOCK_NMAP === '1') {
-  if (!process.env.PATH?.includes(fixturesBin)) {
-    process.env.PATH = `${fixturesBin}:${process.env.PATH || ''}`;
+
+function isNmapProcess(pid: number): boolean {
+  try {
+    const cmdline = fsSync.readFileSync(`/proc/${pid}/cmdline`, 'utf-8');
+    return /(^|\/)nmap\0/.test(cmdline) || cmdline.includes('fixtures/bin/nmap');
+  } catch (e) {
+    return false;
+  }
+}
+
+function killOrphanScan(pid: unknown) {
+  if (typeof pid !== 'number' || !Number.isInteger(pid) || pid <= 1) return;
+  if (!isNmapProcess(pid)) return;
+  try {
+    process.kill(-pid, 'SIGKILL');
+  } catch (e) {
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch (e2) {}
   }
 }
 
@@ -179,16 +196,12 @@ export function getLocalNetworkInfo() {
 }
 
 export async function startServer() {
-  // Kill any orphan nmap processes
-  try {
-    execSync('pkill -9 -f nmap 2>/dev/null || true');
-  } catch (e) {}
-
-  // Startup: mark running and queued jobs as failed
+  // Startup: kill only the nmap processes this app started, then mark running and queued jobs as failed
   await updateDb((db) => {
     if (Array.isArray(db.jobs)) {
       db.jobs.forEach((job: any) => {
         if (job.status === 'running' || job.status === 'queued') {
+          if (job.status === 'running') killOrphanScan(job.pid);
           job.status = 'failed';
           job.stderr = 'Servidor foi reiniciado durante a execução do scan.';
           job.end_time = new Date().toISOString();
@@ -334,7 +347,13 @@ export async function startServer() {
 
     const profile = type && typeof type === 'string' && ALLOWED_PROFILES.includes(type) ? type : 'fast';
     const timing = speed && typeof speed === 'string' && ['T2', 'T3', 'T4', 'T5'].includes(speed) ? speed : (profile === 'stealth' ? 'T2' : 'T4');
-    const validPorts = customPorts && typeof customPorts === 'string' ? customPorts : undefined;
+    if (customPorts !== undefined && (typeof customPorts !== 'string' || !validateCustomPorts(customPorts))) {
+      return res.status(400).json({
+        success: false,
+        error: 'Formato de portas customizadas inválido (use portas entre 1 e 65535, ex: 80,443 ou 1-1000).'
+      });
+    }
+    const validPorts = customPorts && customPorts.trim() ? customPorts.trim() : undefined;
 
     const args = buildNmapArgs(profile, t, timing, validPorts);
     const command = `nmap ${args.join(' ')}`;
@@ -484,6 +503,15 @@ export async function startServer() {
     const rawId = req.params.id;
     if (!rawId || !JOB_ID_REGEX.test(rawId)) {
       return res.status(400).json({ success: false, error: 'ID de scan inválido.' });
+    }
+
+    const db = await readDb();
+    const job = db.jobs.find((j: any) => j.id === rawId);
+    if (!job) {
+      return res.status(404).json({ success: false, error: 'Job não encontrado.' });
+    }
+    if (job.status !== 'running' && job.status !== 'queued') {
+      return res.status(400).json({ success: false, error: 'Somente auditorias ativas ou na fila podem ser canceladas.' });
     }
 
     await cancelScan(rawId);

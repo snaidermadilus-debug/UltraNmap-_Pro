@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { getDataDir } from '../scanner/utils.js';
+import { getDataDir, resolveOutputPath } from '../scanner/utils.js';
 
 const MAX_HISTORY = 50;
 
@@ -91,6 +91,7 @@ export async function updateDb(updateFn: (db: any) => void | Promise<void>): Pro
   const next = mutexChain.then(async () => {
     const { dbPath, tmpDbPath } = getDbPaths();
     const db = await readDb();
+    const idsBefore: string[] = Array.isArray(db.jobs) ? db.jobs.map((j: any) => j?.id).filter(Boolean) : [];
     await updateFn(db);
     if (Array.isArray(db.jobs)) {
       db.jobs = trimJobs(db.jobs);
@@ -98,6 +99,15 @@ export async function updateDb(updateFn: (db: any) => void | Promise<void>): Pro
     const jsonStr = JSON.stringify(db, null, 2);
     await fs.writeFile(tmpDbPath, jsonStr, 'utf-8');
     await fs.rename(tmpDbPath, dbPath);
+
+    // Jobs removed by deletion, history clearing or trimming must not leave their XML output behind
+    const idsAfter = new Set(Array.isArray(db.jobs) ? db.jobs.map((j: any) => j?.id) : []);
+    for (const removedId of idsBefore.filter((id) => !idsAfter.has(id))) {
+      const outputPath = resolveOutputPath(removedId);
+      if (outputPath) {
+        await fs.unlink(outputPath).catch(() => {});
+      }
+    }
     return db;
   }).catch((err) => {
     console.error('[DB UPDATE ERROR]', err);
