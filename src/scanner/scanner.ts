@@ -339,39 +339,35 @@ async function startJobExecution(jobId: string, target: string, type: string, sp
   // 1a) Synchronously attach ALL listeners and setup timeout timer IMMEDIATELY after spawn
   const timer = setTimeout(async () => {
     console.warn(`[SCAN TIMEOUT] Job ID ${jobId} excedeu ${timeoutMin} min.`);
+    if (finished) return;
+    finished = true;
     timedOut = true;
+    stderr += `\nTimeout de execução excedido (${timeoutMin} min).`;
     activeProcesses.delete(jobId);
     killProcessGroupGraceful(nmap);
 
-    // Safety net: wait up to 5s for 'close' event
-    setTimeout(async () => {
-      if (finished) return;
-      finished = true;
-      stderr += `\nTimeout de execução excedido (${timeoutMin} min).`;
-      
-      if (stdout) {
-        const outputPath = resolveOutputPath(jobId);
-        if (outputPath) {
-          try {
-            await fs.mkdir(getOutputsDir(), { recursive: true });
-            await fs.writeFile(outputPath, stdout, 'utf-8');
-          } catch (e) {
-            console.error('[OUTPUT WRITE ERROR]', e);
-          }
+    if (stdout) {
+      const outputPath = resolveOutputPath(jobId);
+      if (outputPath) {
+        try {
+          await fs.mkdir(getOutputsDir(), { recursive: true });
+          await fs.writeFile(outputPath, stdout, 'utf-8');
+        } catch (e) {
+          console.error('[OUTPUT WRITE ERROR]', e);
         }
       }
+    }
 
-      await updateDb((database) => {
-        const currentJob = database.jobs.find((j: any) => j.id === jobId);
-        if (currentJob && currentJob.status !== 'cancelled') {
-          currentJob.status = 'failed';
-          currentJob.stdout = stdout.length > 200 * 1024 ? stdout.substring(0, 200 * 1024) : stdout;
-          currentJob.stderr = stderr.trim();
-          currentJob.end_time = new Date().toISOString();
-        }
-      });
-      processQueue();
-    }, 5000);
+    await updateDb((database) => {
+      const currentJob = database.jobs.find((j: any) => j.id === jobId);
+      if (currentJob && currentJob.status !== 'cancelled') {
+        currentJob.status = 'failed';
+        currentJob.stdout = stdout.length > 200 * 1024 ? stdout.substring(0, 200 * 1024) : stdout;
+        currentJob.stderr = stderr.trim();
+        currentJob.end_time = new Date().toISOString();
+      }
+    });
+    processQueue();
   }, timeoutMs);
 
   // Decode as a stream so multi-byte UTF-8 characters split across chunks are not corrupted
